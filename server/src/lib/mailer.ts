@@ -1,5 +1,6 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { config } from "../config.js";
+import { unavailable } from "./errors.js";
 
 let transporter: Transporter | null = null;
 
@@ -10,8 +11,36 @@ function getTransporter(): Transporter | null {
     port: config.SMTP_PORT,
     secure: config.SMTP_SECURE,
     auth: config.SMTP_USER ? { user: config.SMTP_USER, pass: config.SMTP_PASS } : undefined,
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
   });
   return transporter;
+}
+
+function explainMailError(e: unknown): never {
+  transporter = null;
+  const err = e as { code?: string; responseCode?: number; message?: string };
+  const code = err.code ?? "";
+  const response = err.responseCode ?? 0;
+  console.error(`smtp failed: ${code || response} ${(err.message ?? "").slice(0, 180)}`);
+  if (code === "EAUTH" || response === 535 || response === 534) {
+    throw unavailable("Почта отклонила логин или пароль ящика. В .env укажите полный адрес и пароль этого ящика, затем docker compose up -d");
+  }
+  if (
+    code === "ETIMEDOUT" ||
+    code === "ESOCKET" ||
+    code === "ECONNECTION" ||
+    code === "EDNS" ||
+    code === "ENOTFOUND" ||
+    code === "ECONNREFUSED" ||
+    /timed out|ECONNREFUSED|connect/i.test(err.message ?? "")
+  ) {
+    throw unavailable(
+      "Почтовый сервер не отвечает. На Timeweb Cloud исходящие порты 465 и 587 закрыты по умолчанию: откройте их в панели сервера и повторите",
+    );
+  }
+  throw unavailable("Не удалось отправить письмо. Проверьте SMTP в .env и выполните docker compose up -d");
 }
 
 const escapeHtml = (s: string) =>
@@ -36,7 +65,11 @@ export async function sendMail(to: string, subject: string, title: string, bodyH
     console.info(`[mail:dev] to=${to} subject="${subject}"\n${text}`);
     return;
   }
-  await t.sendMail({ from: config.MAIL_FROM, to, subject, text, html: layout(title, bodyHtml) });
+  try {
+    await t.sendMail({ from: config.MAIL_FROM, to, subject, text, html: layout(title, bodyHtml) });
+  } catch (e) {
+    explainMailError(e);
+  }
 }
 
 export async function sendLoginCode(to: string, code: string) {

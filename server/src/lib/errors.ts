@@ -16,3 +16,4 @@ export const notFound = (message = "Не найдено", code = "not_found") =>
 export const conflict = (message: string, code = "conflict") => new HttpError(409, code, message);
 export const tooMany = (message = "Слишком много попыток, попробуйте позже", code = "rate_limited") =>
   new HttpError(429, code, message);
+export const unavailable = (message: string, code = "unavailable") => new HttpError(503, code, message);
