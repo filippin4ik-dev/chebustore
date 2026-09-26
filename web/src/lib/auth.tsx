@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, setBearer, setUnauthorizedHandler } from "./api";
+import { startLive, useLive } from "./live";
 import { isMiniApp, tg } from "./telegram";
 import { applyTheme } from "./theme";
 import type { Cart, PublicConfig, User } from "./types";
@@ -80,6 +81,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refreshCart().catch(() => undefined);
   }, [refreshCart]);
+
+  useEffect(() => {
+    if (!ready) return;
+    return startLive();
+  }, [ready, user?.id, user?.role]);
+
+  useLive(["config"], () => {
+    api
+      .get<PublicConfig>("/config")
+      .then((c) => {
+        applyTheme(c.theme);
+        setConfig(c);
+      })
+      .catch(() => undefined);
+  });
+
+  useLive(["cart", "catalog"], () => {
+    refreshCart().catch(() => undefined);
+  });
+
+  useLive(["me"], () => {
+    api
+      .get<{ user: User | null }>("/auth/me")
+      .then((me) => setUser(me.user))
+      .catch(() => undefined);
+  });
 
   const logout = useCallback(async () => {
     await api.post("/auth/logout").catch(() => undefined);

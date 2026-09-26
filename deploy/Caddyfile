@@ -10,7 +10,8 @@ www.{$DOMAIN} {
 }
 
 {$DOMAIN} {
-	encode zstd gzip
+	@compressible not path /api/events
+	encode @compressible zstd gzip
 
 	request_body {
 		max_size 20MB
@@ -23,6 +24,13 @@ www.{$DOMAIN} {
 		Permissions-Policy "camera=(), microphone=(), geolocation=(self), payment=()"
 		Cross-Origin-Opener-Policy "same-origin-allow-popups"
 		-Server
+	}
+
+	handle /api/events {
+		reverse_proxy api:4000 {
+			header_up X-Forwarded-For {remote_host}
+			flush_interval -1
+		}
 	}
 
 	@api path /api/* /media/*

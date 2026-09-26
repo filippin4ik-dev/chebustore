@@ -5,6 +5,7 @@ import { Empty, ErrorState, PageLoader, StatusBadge, useAsync } from "../compone
 import { api } from "../lib/api";
 import { dateTime, rub, STATUS_LABEL } from "../lib/format";
 import type { Order, OrderStatus } from "../lib/types";
+import { useLive } from "../lib/live";
 
 const FILTERS: (OrderStatus | "")[] = ["", "PAYMENT_REVIEW", "AWAITING_PAYMENT", "ASSEMBLING", "SHIPPED", "READY_FOR_PICKUP", "COMPLETED", "CANCELLED"];
 
@@ -15,12 +16,13 @@ export default function AdminOrders() {
   const [page, setPage] = useState(1);
   const query = params.get("q") ?? "";
 
-  const { data, error, loading, reload } = useAsync(() => {
+  const { data, error, loading, reload, refresh } = useAsync(() => {
     const qs = new URLSearchParams({ page: String(page) });
     if (status) qs.set("status", status);
     if (query) qs.set("q", query);
     return api.get<{ orders: Order[]; total: number; pageSize: number }>(`/admin/orders?${qs}`);
   }, [status, query, page]);
+  useLive(["orders"], () => void refresh());
 
   useEffect(() => {
     const t = setTimeout(() => {

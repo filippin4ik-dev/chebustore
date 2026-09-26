@@ -3,6 +3,7 @@ import { ErrorState, PageLoader, StatusBadge, useAsync } from "../components/ui"
 import { api } from "../lib/api";
 import { rub } from "../lib/format";
 import type { OrderStatus } from "../lib/types";
+import { useLive } from "../lib/live";
 
 interface Stats {
   byStatus: Partial<Record<OrderStatus, number>>;
@@ -14,7 +15,8 @@ interface Stats {
 const ORDER: OrderStatus[] = ["PAYMENT_REVIEW", "AWAITING_PAYMENT", "ASSEMBLING", "SHIPPED", "READY_FOR_PICKUP", "COMPLETED", "CANCELLED"];
 
 export default function Dashboard() {
-  const { data, error, loading, reload } = useAsync(() => api.get<Stats>("/admin/stats"), []);
+  const { data, error, loading, reload, refresh } = useAsync(() => api.get<Stats>("/admin/stats"), []);
+  useLive(["orders", "catalog"], () => void refresh());
   if (loading && !data) return <PageLoader />;
   if (error || !data) return <ErrorState message={error ?? ""} retry={reload} />;
   const review = data.byStatus.PAYMENT_REVIEW ?? 0;

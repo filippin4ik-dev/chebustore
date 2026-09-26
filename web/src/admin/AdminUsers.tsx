@@ -6,6 +6,7 @@ import { useAuth } from "../lib/auth";
 import { dateTime, userName } from "../lib/format";
 import { useToast } from "../lib/toast";
 import type { AdminUser, Role } from "../lib/types";
+import { useLive } from "../lib/live";
 
 const ROLE_LABEL: Record<Role, string> = { CUSTOMER: "Покупатель", MANAGER: "Менеджер", ADMIN: "Администратор" };
 
@@ -23,12 +24,13 @@ export default function AdminUsers() {
     return () => clearTimeout(t);
   }, [q]);
 
-  const { data, error, loading, reload } = useAsync(() => {
+  const { data, error, loading, reload, refresh } = useAsync(() => {
     const qs = new URLSearchParams();
     if (query) qs.set("q", query);
     if (role) qs.set("role", role);
     return api.get<{ users: AdminUser[]; total: number }>(`/admin/users?${qs}`);
   }, [query, role]);
+  useLive(["users"], () => void refresh());
 
   const update = async (patch: { role?: Role; isBlocked?: boolean }) => {
     if (!selected) return;

@@ -332,6 +332,67 @@ assert.equal(publicCfg.data.theme.bgLight, "#F5EFE6");
 assert.equal(publicCfg.data.theme.bgDark, "#14110D");
 ok("store background: unreadable colors rejected, saved colors in public config");
 
+async function listen(token) {
+  const controller = new AbortController();
+  const headers = token?.startsWith("cookie:") ? { Cookie: token.slice(7) } : token ? { Authorization: `Bearer ${token}` } : {};
+  const res = await fetch(BASE + "/api/events", { headers, signal: controller.signal });
+  const events = [];
+  (async () => {
+    const decoder = new TextDecoder();
+    let buf = "";
+    try {
+      for await (const chunk of res.body) {
+        buf += decoder.decode(chunk, { stream: true });
+        let i;
+        while ((i = buf.indexOf("\n\n")) >= 0) {
+          const line = buf.slice(0, i).split("\n").find((l) => l.startsWith("data: "));
+          buf = buf.slice(i + 2);
+          if (line) events.push(JSON.parse(line.slice(6)));
+        }
+      }
+    } catch {
+      return;
+    }
+  })();
+  const wait = async (pred) => {
+    for (let i = 0; i < 40; i++) {
+      if (events.some(pred)) return true;
+      await sleep(50);
+    }
+    return false;
+  };
+  return { res, events, wait, close: () => controller.abort() };
+}
+
+const anonLive = await listen();
+const custLive = await listen(C);
+const staffLive = await listen(A);
+assert.equal(anonLive.res.status, 200);
+assert.match(anonLive.res.headers.get("content-type"), /text\/event-stream/);
+
+await call("PUT", "/api/admin/settings/store", { token: A, body: { ...current, storeName: "CHEBU" } });
+assert.ok(await anonLive.wait((e) => e.type === "config"));
+assert.ok(await custLive.wait((e) => e.type === "config"));
+
+await call("PUT", "/api/cart/items", { token: C, body: { variantId: L.id, quantity: 1 } });
+assert.ok(await custLive.wait((e) => e.type === "cart"));
+
+await call("PATCH", `/api/admin/orders/${O.number}`, { token: A, body: { adminComment: "внутренняя заметка" } });
+assert.ok(await staffLive.wait((e) => e.type === "orders" && e.number === O.number));
+await call("PATCH", `/api/admin/orders/${O.number}`, { token: A, body: { trackingNumber: "CDEK123" } });
+assert.ok(await custLive.wait((e) => e.type === "order" && e.number === O.number));
+assert.equal(custLive.events.filter((e) => e.type === "order").length, 1);
+
+await call("PATCH", `/api/admin/products/${productId}`, { token: A, body: { isActive: true } });
+assert.ok(await anonLive.wait((e) => e.type === "catalog"));
+
+assert.equal(anonLive.events.some((e) => ["order", "orders", "cart", "me", "users"].includes(e.type)), false);
+assert.equal(custLive.events.some((e) => e.type === "orders"), false);
+anonLive.close();
+custLive.close();
+staffLive.close();
+ok("live updates: public changes to everyone, orders only to owner and staff, cart only to owner");
+
 const audit = await call("GET", "/api/admin/audit", { token: A });
 assert.ok(audit.data.logs.some((l) => l.action === "payment.approve"));
 ok(`audit log recorded ${audit.data.logs.length} actions`);

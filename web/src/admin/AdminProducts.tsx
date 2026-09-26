@@ -5,10 +5,12 @@ import { Empty, ErrorState, PageLoader, useAsync } from "../components/ui";
 import { api } from "../lib/api";
 import { rub } from "../lib/format";
 import type { AdminProduct } from "../lib/types";
+import { useLive } from "../lib/live";
 
 export default function AdminProducts() {
   const [q, setQ] = useState("");
-  const { data, error, loading, reload } = useAsync(() => api.get<{ products: AdminProduct[] }>("/admin/products").then((r) => r.products), []);
+  const { data, error, loading, reload, refresh } = useAsync(() => api.get<{ products: AdminProduct[] }>("/admin/products").then((r) => r.products), []);
+  useLive(["catalog", "orders"], () => void refresh());
   const list = (data ?? []).filter((p) => !q || p.title.toLowerCase().includes(q.toLowerCase()));
 
   return (

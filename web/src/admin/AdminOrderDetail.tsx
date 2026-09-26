@@ -5,6 +5,7 @@ import { api, ApiError } from "../lib/api";
 import { dateTime, DELIVERY_LABEL, rub, STATUS_LABEL, userName } from "../lib/format";
 import { useToast } from "../lib/toast";
 import type { Order, OrderStatus, User } from "../lib/types";
+import { useLive } from "../lib/live";
 
 interface Detail {
   order: Order;
@@ -17,7 +18,8 @@ const REJECT_REASONS = ["Платёж не найден", "Сумма не со�
 export default function AdminOrderDetail() {
   const { number = "" } = useParams();
   const toast = useToast();
-  const { data, error, loading, reload } = useAsync(() => api.get<Detail>(`/admin/orders/${encodeURIComponent(number)}`), [number]);
+  const { data, error, loading, reload, refresh } = useAsync(() => api.get<Detail>(`/admin/orders/${encodeURIComponent(number)}`), [number]);
+  useLive((e) => e.type === "orders" && (!e.number || String(e.number) === String(number)), () => void refresh());
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [statusTarget, setStatusTarget] = useState<OrderStatus | null>(null);

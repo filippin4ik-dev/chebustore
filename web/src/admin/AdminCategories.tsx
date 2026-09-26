@@ -4,10 +4,12 @@ import { Icon } from "../components/Icon";
 import { api, ApiError } from "../lib/api";
 import { useToast } from "../lib/toast";
 import type { AdminCategory } from "../lib/types";
+import { useLive } from "../lib/live";
 
 export default function AdminCategories() {
   const toast = useToast();
-  const { data, error, loading, reload } = useAsync(() => api.get<{ categories: AdminCategory[] }>("/admin/categories").then((r) => r.categories), []);
+  const { data, error, loading, reload, refresh } = useAsync(() => api.get<{ categories: AdminCategory[] }>("/admin/categories").then((r) => r.categories), []);
+  useLive(["catalog"], () => void refresh());
   const [editing, setEditing] = useState<Partial<AdminCategory> | null>(null);
 
   const save = async () => {

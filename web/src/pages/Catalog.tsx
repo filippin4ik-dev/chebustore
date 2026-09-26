@@ -6,6 +6,7 @@ import { Empty, ErrorState, Spinner } from "../components/ui";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import type { Category, Product } from "../lib/types";
+import { useLive } from "../lib/live";
 
 interface ProductsPage {
   products: Product[];
@@ -55,6 +56,17 @@ export default function Catalog() {
       cancelled = true;
     };
   }, [category, sort, q]);
+
+  useLive(["catalog"], () => {
+    api.get<{ categories: Category[] }>("/categories").then((r) => setCategories(r.categories), () => undefined);
+    const pages = Array.from({ length: page }, (_, i) => load(i + 1));
+    Promise.all(pages)
+      .then((rs) => {
+        setProducts(rs.flatMap((r) => r.products));
+        setTotal(rs[rs.length - 1]?.total ?? 0);
+      })
+      .catch(() => undefined);
+  });
 
   useEffect(() => {
     const t = setTimeout(() => {

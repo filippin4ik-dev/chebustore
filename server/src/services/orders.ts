@@ -1,6 +1,7 @@
 import type { Order, OrderStatus, Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { conflict } from "../lib/errors.js";
+import { publish, publishOrder } from "../lib/live.js";
 
 export const STATUS_TEXT: Record<OrderStatus, string> = {
   AWAITING_PAYMENT: "Ожидает оплаты",
@@ -34,7 +35,7 @@ export interface TransitionInput {
 }
 
 export async function transition({ orderId, to, actorId, note = "", data = {} }: TransitionInput) {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const current = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true } });
     if (!canTransition(current.status, to)) {
       throw conflict(`Нельзя перевести заказ из «${STATUS_TEXT[current.status]}» в «${STATUS_TEXT[to]}»`);
@@ -63,6 +64,9 @@ export async function transition({ orderId, to, actorId, note = "", data = {} }:
     await tx.orderStatusEvent.create({ data: { orderId, from: current.status, to, actorId, note } });
     return { order, from: current.status };
   });
+  publishOrder(result.order);
+  if (to === "CANCELLED") publish("all", { type: "catalog" });
+  return result;
 }
 
 export const orderInclude = {

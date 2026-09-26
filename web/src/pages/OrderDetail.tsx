@@ -8,6 +8,7 @@ import { useAuth } from "../lib/auth";
 import { dateTime, DELIVERY_LABEL, progressStep, rub, STATUS_LABEL, timeLeft } from "../lib/format";
 import { useToast } from "../lib/toast";
 import type { Order } from "../lib/types";
+import { useLive } from "../lib/live";
 
 function PayLabel({ title, bank }: { title: string; bank: string }) {
   return (
@@ -30,10 +31,11 @@ export default function OrderDetail() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [showReceipts, setShowReceipts] = useState(false);
-  const { data: order, setData, error, loading, reload } = useAsync(
+  const { data: order, setData, error, loading, reload, refresh } = useAsync(
     () => api.get<{ order: Order }>(`/orders/${encodeURIComponent(number)}`).then((r) => r.order),
     [number, user?.id],
   );
+  useLive((e) => e.type === "order" && (!e.number || String(e.number) === String(number)), () => void refresh());
 
   if (!user) return <ErrorState message="Войдите, чтобы открыть заказ" />;
   if (loading && !order) return <PageLoader />;

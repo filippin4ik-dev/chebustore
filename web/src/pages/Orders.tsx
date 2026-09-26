@@ -5,13 +5,15 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { date, rub } from "../lib/format";
 import type { Order } from "../lib/types";
+import { useLive } from "../lib/live";
 
 export default function Orders() {
   const { user } = useAuth();
-  const { data, error, loading, reload } = useAsync(
+  const { data, error, loading, reload, refresh } = useAsync(
     () => (user ? api.get<{ orders: Order[] }>("/orders").then((r) => r.orders) : Promise.resolve([])),
     [user?.id],
   );
+  useLive(["order"], () => void refresh());
 
   if (!user) {
     return (

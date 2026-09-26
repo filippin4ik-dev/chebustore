@@ -8,16 +8,18 @@ import { rub } from "../lib/format";
 import { haptic } from "../lib/telegram";
 import { useToast } from "../lib/toast";
 import type { Cart, Product } from "../lib/types";
+import { useLive } from "../lib/live";
 
 export default function ProductPage() {
   const { slug = "" } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
   const { user, cart, setCart } = useAuth();
-  const { data, error, loading, reload } = useAsync(
+  const { data, error, loading, reload, refresh } = useAsync(
     () => api.get<{ product: Product }>(`/products/${encodeURIComponent(slug)}`).then((r) => r.product),
     [slug],
   );
+  useLive(["catalog"], () => void refresh());
   const [color, setColor] = useState<string | null>(null);
   const [variantId, setVariantId] = useState<string | null>(null);
   const [slide, setSlide] = useState(0);

@@ -3,6 +3,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { config } from "../config.js";
 import { prisma } from "../db.js";
 import { keyedHash, randomToken } from "../lib/crypto.js";
+import { closeStreams } from "../lib/live.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 export const isStaff = (role: Role) => role === "ADMIN" || role === "MANAGER";
@@ -47,6 +48,7 @@ export async function revokeAllSessions(userId: string, exceptId?: string) {
     where: { userId, revokedAt: null, ...(exceptId ? { id: { not: exceptId } } : {}) },
     data: { revokedAt: new Date() },
   });
+  closeStreams({ userId, exceptSessionId: exceptId });
 }
 
 export function setSessionCookie(reply: FastifyReply, token: string, expiresAt: Date) {

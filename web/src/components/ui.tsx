@@ -196,8 +196,19 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+  const refresh = useCallback(
+    () =>
+      fnRef
+        .current()
+        .then((d) => {
+          setData(d);
+          setError(null);
+        })
+        .catch(() => undefined),
+    [],
+  );
   useEffect(() => void reload(), deps);
-  return { data, setData, error, loading, reload };
+  return { data, setData, error, loading, reload, refresh };
 }
 
 export function Stepper({ value, min = 0, max, onChange }: { value: number; min?: number; max: number; onChange(v: number): void }) {

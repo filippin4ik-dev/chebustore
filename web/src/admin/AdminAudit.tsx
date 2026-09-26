@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ErrorState, PageLoader, useAsync } from "../components/ui";
 import { api } from "../lib/api";
 import { dateTime } from "../lib/format";
+import { useLive } from "../lib/live";
 
 interface Log {
   id: string;
@@ -35,7 +36,8 @@ const ACTIONS: Record<string, string> = {
 
 export default function AdminAudit() {
   const [page, setPage] = useState(1);
-  const { data, error, loading, reload } = useAsync(() => api.get<{ logs: Log[]; pageSize: number }>(`/admin/audit?page=${page}`), [page]);
+  const { data, error, loading, reload, refresh } = useAsync(() => api.get<{ logs: Log[]; pageSize: number }>(`/admin/audit?page=${page}`), [page]);
+  useLive(["orders", "catalog", "config", "users"], () => void refresh());
   if (loading && !data) return <PageLoader />;
   if (error) return <ErrorState message={error} retry={reload} />;
 

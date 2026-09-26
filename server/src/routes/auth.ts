@@ -20,6 +20,7 @@ import {
 } from "../services/sessions.js";
 import { consumeTelegramLogin, createTelegramLogin, findTelegramLogin } from "../services/telegramLogin.js";
 import { normalizeEmail, upsertEmailUser, upsertTelegramUser } from "../services/users.js";
+import { closeStreams } from "../lib/live.js";
 
 const emailSchema = z.string().trim().toLowerCase().max(254).email("Некорректный email");
 const clientSchema = z.enum(["WEB", "IOS"]).default("WEB");
@@ -186,6 +187,7 @@ export default async function authRoutes(app: FastifyInstance) {
   app.post("/api/auth/logout", async (req, reply) => {
     if (req.auth) {
       await prisma.session.update({ where: { id: req.auth.session.id }, data: { revokedAt: new Date() } });
+      closeStreams({ sessionId: req.auth.session.id });
     }
     clearSessionCookie(reply);
     return { ok: true };
@@ -207,6 +209,7 @@ export default async function authRoutes(app: FastifyInstance) {
       where: { id: req.params.id, userId: user.id, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    closeStreams({ sessionId: req.params.id });
     return { ok: true };
   });
 

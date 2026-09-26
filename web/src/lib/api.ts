@@ -55,6 +55,13 @@ export const api = {
     fd.append("file", file);
     return request<T>("POST", path, fd);
   },
+  async stream(path: string, signal: AbortSignal): Promise<Response> {
+    const open = () =>
+      fetch(`/api${path}`, { credentials: "same-origin", headers: headers({ Accept: "text/event-stream" }), cache: "no-store", signal });
+    const res = await open();
+    if (res.status === 401 && bearer && onUnauthorized && (await onUnauthorized())) return open();
+    return res;
+  },
   async blobUrl(path: string): Promise<{ url: string; type: string }> {
     const res = await fetch(`/api${path}`, { credentials: "same-origin", headers: headers() });
     if (!res.ok) throw new ApiError("Не удалось загрузить файл", "file", res.status);

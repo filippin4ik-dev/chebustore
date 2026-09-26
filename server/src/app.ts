@@ -18,6 +18,8 @@ import cartRoutes from "./routes/cart.js";
 import catalogRoutes from "./routes/catalog.js";
 import orderRoutes from "./routes/orders.js";
 import pushRoutes from "./routes/push.js";
+import liveRoutes from "./routes/live.js";
+import { liveOnResponse, startLive, stopLive } from "./lib/live.js";
 import telegramRoutes from "./routes/telegram.js";
 
 export async function buildApp() {
@@ -56,6 +58,9 @@ export async function buildApp() {
   });
   await app.register(multipart, { limits: { fileSize: config.productImageMaxBytes, files: 1, fields: 5, parts: 6 } });
   await app.register(authPlugin);
+  app.addHook("onResponse", liveOnResponse);
+  app.addHook("onClose", async () => stopLive());
+  startLive();
 
   app.setErrorHandler((err: FastifyError | HttpError | Error, req, reply) => {
     if (err instanceof HttpError) {
@@ -108,6 +113,7 @@ export async function buildApp() {
   await app.register(adminRoutes);
   await app.register(addressRoutes);
   await app.register(pushRoutes);
+  await app.register(liveRoutes);
   await app.register(telegramRoutes);
 
   return app;
