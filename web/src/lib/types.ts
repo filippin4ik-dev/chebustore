@@ -223,6 +223,7 @@ export interface ImportSettings {
   publish: boolean;
   stock: number;
   categoryId: string;
+  hasHistorySession: boolean;
 }
 
 export interface ApnsPublic {

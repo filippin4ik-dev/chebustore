@@ -9,6 +9,7 @@ import { bot } from "../bot/instance.js";
 import { deleteBotImage, deleteProductImage, deleteReceipt, saveBotImage, saveProductImage } from "../lib/files.js";
 import { publish, publishOrder } from "../lib/live.js";
 import { apnsPublic, parseApnsKey, resetApns } from "../lib/apns.js";
+import { open, seal } from "../lib/crypto.js";
 import {
   getImportSettings,
   getPaymentSettings,
@@ -24,6 +25,8 @@ import {
 } from "../lib/settings.js";
 import { parse } from "../lib/validate.js";
 import { requireAdmin, requireStaff } from "../plugins/auth.js";
+import { historyStatus, startHistoryImport } from "../services/channelImport.js";
+import { beginTelegramLogin, finishTelegramLogin } from "../services/telegramUser.js";
 import { productInclude, serializeProductAdmin, slugify, uniqueSlug } from "../services/catalog.js";
 import { notifyStatus } from "../services/notify.js";
 import { nextStatuses, orderInclude, serializeOrder, STATUS_TEXT, transition } from "../services/orders.js";
@@ -46,6 +49,18 @@ async function phoneMatches(table: "Order" | "User", column: "contactPhone" | "p
     WHERE regexp_replace(${Prisma.raw(`"${column}"`)}, '[^0-9]', '', 'g') LIKE ${`%${digits}%`}
     LIMIT 500`;
   return rows.map((r) => r.id);
+}
+
+function publicImport(value: Awaited<ReturnType<typeof getImportSettings>>) {
+  return {
+    enabled: value.enabled,
+    channelId: value.channelId,
+    channelTitle: value.channelTitle,
+    publish: value.publish,
+    stock: value.stock,
+    categoryId: value.categoryId,
+    hasHistorySession: Boolean(value.mtSessionSeal),
+  };
 }
 
 function channelRef(raw: string): string | null {
@@ -501,7 +516,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       getImportSettings(),
       apnsPublic(),
     ]);
-    return { store, payment: actor.role === "ADMIN" ? payment : null, import: channelImport, apns };
+    return { store, payment: actor.role === "ADMIN" ? payment : null, import: publicImport(channelImport), apns };
   });
 
   app.put("/api/admin/settings/import", async (req) => {
@@ -541,10 +556,83 @@ export default async function adminRoutes(app: FastifyInstance) {
       channelTitle = chat.title;
     }
     if (body.enabled && !channelId) throw badRequest("Укажите канал, из которого добавлять товары");
-    const value = importSettingsSchema.parse({ ...body, channelId, channelTitle });
+    const value = importSettingsSchema.parse({
+      ...body,
+      channelId,
+      channelTitle,
+      mtApiId: current.mtApiId,
+      mtApiHash: current.mtApiHash,
+      mtSessionSeal: current.mtSessionSeal,
+    });
     await saveImportSettings(value);
-    await audit(actor.id, "settings.import", "setting", "import", value, req.ip);
-    return { import: value };
+    await audit(actor.id, "settings.import", "setting", "import", { ...value, mtApiHash: "", mtSessionSeal: "" }, req.ip);
+    return { import: publicImport(value) };
+  });
+
+  app.post("/api/admin/settings/import/login/start", { config: { rateLimit: { max: 5, timeWindow: "10 minutes" } } }, async (req) => {
+    requireAdmin(req);
+    const current = await getImportSettings();
+    const body = parse(
+      z.object({
+        apiId: z.coerce.number().int().positive().optional(),
+        apiHash: z.string().trim().regex(/^[a-f0-9]{32}$/i).optional(),
+        phone: z.string().trim().regex(/^\+\d{8,15}$/, "Телефон в международном виде, например +79001234567"),
+      }),
+      req.body,
+    );
+    const apiId = body.apiId || current.mtApiId;
+    const apiHash = (body.apiHash || current.mtApiHash).toLowerCase();
+    if (!apiId || !apiHash) throw badRequest("Укажите api_id и api_hash с my.telegram.org");
+    const started = await beginTelegramLogin(apiId, apiHash, body.phone);
+    await saveImportSettings({ ...current, mtApiId: apiId, mtApiHash: apiHash });
+    return { loginId: started.loginId, viaApp: started.viaApp };
+  });
+
+  app.post("/api/admin/settings/import/login/code", { config: { rateLimit: { max: 10, timeWindow: "10 minutes" } } }, async (req) => {
+    const actor = requireAdmin(req);
+    const current = await getImportSettings();
+    if (!current.channelId) throw badRequest("Сначала сохраните канал");
+    const body = parse(
+      z.object({
+        loginId: z.string().trim().min(10).max(40),
+        code: z.string().trim().regex(/^\d{4,8}$/, "Код — цифры из Telegram"),
+        password: z.string().max(200).optional(),
+      }),
+      req.body,
+    );
+    const done = await finishTelegramLogin(body.loginId, body.code, body.password);
+    if (done.needsPassword) return { needsPassword: true };
+    const started = await startHistoryImport(current.channelId, current.mtApiId, current.mtApiHash, done.session).catch((e) => {
+      throw badRequest((e as Error).message.slice(0, 300));
+    });
+    await saveImportSettings({ ...current, mtSessionSeal: seal("mt-session", done.session) });
+    await audit(actor.id, "import.history", "setting", "import", { channelId: current.channelId }, req.ip);
+    return { needsPassword: false, already: started.already, progress: started.progress };
+  });
+
+  app.post("/api/admin/settings/import/history/again", async (req) => {
+    const actor = requireAdmin(req);
+    const current = await getImportSettings();
+    if (!current.mtSessionSeal || !current.mtApiId || !current.mtApiHash || !current.channelId) {
+      throw badRequest("Сначала один раз войдите аккаунтом Telegram в разделе «Старые посты»");
+    }
+    let session: string;
+    try {
+      session = open("mt-session", current.mtSessionSeal);
+    } catch {
+      throw badRequest("Сохранённый вход не читается. Войдите аккаунтом Telegram ещё раз");
+    }
+    const started = await startHistoryImport(current.channelId, current.mtApiId, current.mtApiHash, session).catch((e) => {
+      throw badRequest((e as Error).message.slice(0, 300));
+    });
+    await audit(actor.id, "import.history", "setting", "import", { channelId: current.channelId, again: true }, req.ip);
+    return { already: started.already, progress: started.progress };
+  });
+
+  app.get("/api/admin/settings/import/history", async (req) => {
+    requireAdmin(req);
+    const current = await getImportSettings();
+    return { progress: current.channelId ? historyStatus(current.channelId) : null, hasSession: Boolean(current.mtSessionSeal) };
   });
 
   app.post("/api/admin/settings/welcome-photo", async (req) => {

@@ -469,6 +469,24 @@ assert.equal(impOff.status, 200, JSON.stringify(impOff.data));
 assert.equal((await call("GET", "/api/admin/settings", { token: A })).data.import.stock, 2);
 ok("channel import settings: validated, admin-only");
 
+const histCust = await call("POST", "/api/admin/settings/import/login/start", { token: C, body: { apiId: 123456, apiHash: "a".repeat(32), phone: "+79001234567" } });
+assert.equal(histCust.status, 403);
+const histPhone = await call("POST", "/api/admin/settings/import/login/start", { token: A, body: { apiId: 123456, apiHash: "a".repeat(32), phone: "89001234567" } });
+assert.equal(histPhone.status, 400);
+const histHash = await call("POST", "/api/admin/settings/import/login/start", { token: A, body: { apiId: 123456, apiHash: "not-a-hash", phone: "+79001234567" } });
+assert.equal(histHash.status, 400);
+const histCode = await call("POST", "/api/admin/settings/import/login/code", { token: A, body: { loginId: "no-such-login", code: "12345" } });
+assert.equal(histCode.status, 400);
+const histAgain = await call("POST", "/api/admin/settings/import/history/again", { token: A });
+assert.equal(histAgain.status, 400);
+const histStatus = await call("GET", "/api/admin/settings/import/history", { token: A });
+assert.equal(histStatus.status, 200);
+assert.equal(histStatus.data.hasSession, false);
+const leaked = JSON.stringify((await call("GET", "/api/admin/settings", { token: A })).data);
+assert.equal(leaked.includes("mtApiHash"), false);
+assert.equal(leaked.includes("mtSessionSeal"), false);
+ok("channel history login: validation only, secrets stay off the response");
+
 const pem = generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey.export({ type: "pkcs8", format: "pem" }).toString();
 const apnsCust = await call("PUT", "/api/admin/settings/apns", { token: C, body: { keyId: "ABC123DEFG", teamId: "TEAM123456", key: pem } });
 assert.equal(apnsCust.status, 403);

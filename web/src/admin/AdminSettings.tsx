@@ -29,6 +29,10 @@ export default function AdminSettings() {
   const [saving, setSaving] = useState<"store" | "payment" | "import" | "photo" | "apns" | null>(null);
   const [imp, setImp] = useState<ImportSettings | null>(null);
   const [channel, setChannel] = useState("");
+  const [history, setHistory] = useState({ apiId: "", apiHash: "", phone: "", code: "", password: "" });
+  const [loginId, setLoginId] = useState("");
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [historyText, setHistoryText] = useState("");
   const [categories, setCategories] = useState<AdminCategory[]>([]);
   const [apns, setApns] = useState<ApnsPublic | null>(null);
   const [apnsForm, setApnsForm] = useState({ keyId: "", teamId: "", bundleId: "ru.chebustore.app", key: "" });
@@ -112,6 +116,81 @@ export default function AdminSettings() {
       setImp(r.import);
       setChannel(r.import.channelId);
       toast(r.import.enabled ? `Импорт включён: ${r.import.channelTitle}` : "Импорт выключен");
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Ошибка", true);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const watchHistory = () => {
+    const tick = async () => {
+      const s = await api.get<{
+        progress: { running: boolean; scanned: number; created: number; updated: number; skipped: number; error: string } | null;
+      }>("/admin/settings/import/history");
+      const p = s.progress;
+      if (!p) return;
+      setHistoryText(
+        p.error
+          ? p.error
+          : p.running
+            ? `Идёт загрузка: просмотрено ${p.scanned}, новых ${p.created}`
+            : `Готово: новых ${p.created}, обновлено ${p.updated}, пропущено ${p.skipped}`,
+      );
+      if (p.running) setTimeout(() => void tick(), 2500);
+    };
+    setTimeout(() => void tick(), 2000);
+  };
+
+  const requestHistoryCode = async () => {
+    setSaving("import");
+    try {
+      const r = await api.post<{ loginId: string; viaApp: boolean }>("/admin/settings/import/login/start", {
+        apiId: Number(history.apiId),
+        apiHash: history.apiHash.trim(),
+        phone: history.phone.trim(),
+      });
+      setLoginId(r.loginId);
+      setHistoryText(r.viaApp ? "Код пришёл в Telegram" : "Код пришёл по SMS");
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Ошибка", true);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const confirmHistoryCode = async () => {
+    setSaving("import");
+    try {
+      const r = await api.post<{ needsPassword: boolean; already?: boolean }>("/admin/settings/import/login/code", {
+        loginId,
+        code: history.code.trim(),
+        password: history.password || undefined,
+      });
+      if (r.needsPassword) {
+        setNeedsPassword(true);
+        setHistoryText("На аккаунте включена двухэтапная защита. Введите её пароль.");
+        return;
+      }
+      setLoginId("");
+      setNeedsPassword(false);
+      setHistory({ apiId: "", apiHash: "", phone: "", code: "", password: "" });
+      setImp(imp ? { ...imp, hasHistorySession: true } : imp);
+      setHistoryText(r.already ? "Загрузка уже идёт" : "Вход выполнен, старые посты загружаются");
+      watchHistory();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Ошибка", true);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const loadHistoryAgain = async () => {
+    setSaving("import");
+    try {
+      const r = await api.post<{ already: boolean }>("/admin/settings/import/history/again");
+      setHistoryText(r.already ? "Загрузка уже идёт" : "Загрузка старых постов началась");
+      watchHistory();
     } catch (e) {
       toast(e instanceof ApiError ? e.message : "Ошибка", true);
     } finally {
@@ -607,13 +686,93 @@ export default function AdminSettings() {
             <div className="section-footer">
               Добавьте бота в администраторы канала. Из поста берутся название (первая строка), цена, размеры, состояние, описание и
               все фото; строки вроде «Оформить 👉 @…» и хэштеги пропускаются. Правка поста обновляет товар, слово «продано» обнуляет
-              остаток. Старые посты перешлите боту в личку — он добавит их так же. Для закрытого канала перешлите боту любой пост: он
-              пришлёт ID канала.
+              остаток. Новые посты подхватываются сами. Для закрытого канала перешлите боту любой пост: он пришлёт ID канала.
             </div>
           </div>
           <button className="btn block" onClick={saveImport} disabled={saving !== null}>
             {saving === "import" ? <Spinner /> : "Сохранить импорт"}
           </button>
+
+          <div className="section">
+            <div className="section-header">Старые посты</div>
+            <div className="list">
+              {!loginId && (
+                <>
+                  <div className="field">
+                    <label>api_id</label>
+                    <input
+                      value={history.apiId}
+                      onChange={(e) => setHistory({ ...history, apiId: e.target.value.replace(/\D/g, "").slice(0, 12) })}
+                      inputMode="numeric"
+                      placeholder="12345678"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>api_hash</label>
+                    <input
+                      value={history.apiHash}
+                      onChange={(e) => setHistory({ ...history, apiHash: e.target.value.trim().toLowerCase() })}
+                      placeholder="32 символа с my.telegram.org"
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Телефон аккаунта</label>
+                    <input
+                      value={history.phone}
+                      onChange={(e) => setHistory({ ...history, phone: e.target.value.replace(/[^\d+]/g, "").slice(0, 16) })}
+                      placeholder="+79001234567"
+                      inputMode="tel"
+                    />
+                  </div>
+                </>
+              )}
+              {loginId && (
+                <>
+                  <div className="field">
+                    <label>Код из Telegram</label>
+                    <input
+                      value={history.code}
+                      onChange={(e) => setHistory({ ...history, code: e.target.value.replace(/\D/g, "").slice(0, 8) })}
+                      inputMode="numeric"
+                      placeholder="12345"
+                    />
+                  </div>
+                  {needsPassword && (
+                    <div className="field">
+                      <label>Пароль двухэтапной защиты</label>
+                      <input type="password" value={history.password} onChange={(e) => setHistory({ ...history, password: e.target.value })} />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            {historyText && <div className="section-footer">{historyText}</div>}
+            <div className="section-footer">
+              Бот видит только новые посты. Чтобы забрать старые, один раз войдите своим аккаунтом. api_id и api_hash берутся на my.telegram.org → API development tools. Сессия хранится только на сервере, в браузер не возвращается.
+            </div>
+          </div>
+          {!loginId ? (
+            <>
+              <button
+                className="btn block"
+                onClick={requestHistoryCode}
+                disabled={saving !== null || !channel || !history.apiId || history.apiHash.length < 32 || !history.phone.startsWith("+")}
+              >
+                Получить код
+              </button>
+              {imp.hasHistorySession && (
+                <button className="btn block gray mt-8" onClick={loadHistoryAgain} disabled={saving !== null}>
+                  Загрузить старые посты ещё раз
+                </button>
+              )}
+            </>
+          ) : (
+            <button className="btn block" onClick={confirmHistoryCode} disabled={saving !== null || history.code.length < 4}>
+              Войти и загрузить посты
+            </button>
+          )}
         </>
       )}
     </div>

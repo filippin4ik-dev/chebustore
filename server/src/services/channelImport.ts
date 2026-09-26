@@ -65,7 +65,9 @@ export function collect(part: ImportPart, fromChannel: boolean): Promise<ImportR
   });
 }
 
-async function downloadPhoto(fileId: string) {
+async function downloadPhoto(fileId: string, buffers?: Map<string, Buffer>) {
+  const local = buffers?.get(fileId);
+  if (local) return local;
   const file = await bot.api.getFile(fileId);
   if (!file.file_path || (file.file_size ?? 0) > MAX_FILE) return null;
   const res = await fetch(`https://api.telegram.org/file/bot${config.TELEGRAM_BOT_TOKEN}/${file.file_path}`, {
@@ -113,12 +115,12 @@ async function syncVariants(productId: string, post: ParsedPost, stock: number, 
   }
 }
 
-async function attachPhotos(productId: string, photos: string[]) {
+async function attachPhotos(productId: string, photos: string[], buffers?: Map<string, Buffer>) {
   const have = await prisma.productImage.count({ where: { productId } });
   let added = 0;
   for (const fileId of photos.slice(0, Math.max(0, MAX_IMAGES - have))) {
     try {
-      const buf = await downloadPhoto(fileId);
+      const buf = await downloadPhoto(fileId, buffers);
       if (!buf) continue;
       const img = await saveProductImage(buf);
       try {
@@ -137,7 +139,7 @@ async function attachPhotos(productId: string, photos: string[]) {
   return added;
 }
 
-async function importPost(parts: ImportPart[], fromChannel: boolean): Promise<ImportResult> {
+async function importPost(parts: ImportPart[], fromChannel: boolean, buffers?: Map<string, Buffer>): Promise<ImportResult> {
   const settings = await getImportSettings();
   const sorted = [...parts].sort((a, b) => a.messageId - b.messageId);
   const main = sorted.find((p) => p.text.trim()) ?? sorted[0]!;
@@ -154,7 +156,7 @@ async function importPost(parts: ImportPart[], fromChannel: boolean): Promise<Im
     });
     await syncVariants(product.id, post, settings.stock, false);
     const hasImages = await prisma.productImage.count({ where: { productId: product.id } });
-    const added = hasImages ? 0 : await attachPhotos(product.id, photos);
+    const added = hasImages ? 0 : await attachPhotos(product.id, photos, buffers);
     await audit(null, post.sold ? "product.import.sold" : "product.import.update", "product", product.id, { sourceKey });
     publish("all", { type: "catalog" });
     return { status: post.sold ? "sold" : "updated", product, photos: added };
@@ -174,11 +176,11 @@ async function importPost(parts: ImportPart[], fromChannel: boolean): Promise<Im
     },
   });
   await syncVariants(product.id, post, settings.stock, true);
-  const added = await attachPhotos(product.id, photos);
+  const added = await attachPhotos(product.id, photos, buffers);
   if (!added && product.isActive) await prisma.product.update({ where: { id: product.id }, data: { isActive: false } });
   await audit(null, "product.import", "product", product.id, { sourceKey, photos: added });
   publish("all", { type: "catalog" });
-  if (fromChannel) await tellStaff(product, post, added);
+  if (fromChannel && !buffers) await tellStaff(product, post, added);
   return { status: "created", product, photos: added };
 }
 
@@ -202,4 +204,87 @@ export async function updateFromEdit(part: ImportPart) {
 export async function channelAllowed(chatId: number | string) {
   const s = await getImportSettings();
   return s.enabled && s.channelId !== "" && s.channelId === String(chatId);
+}
+
+export interface HistoryProgress {
+  running: boolean;
+  scanned: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  error: string;
+}
+
+const historyJobs = new Map<string, HistoryProgress>();
+
+export function historyStatus(channelId: string) {
+  return historyJobs.get(channelId) ?? null;
+}
+
+export async function startHistoryImport(channelId: string, apiId: number, apiHash: string, session: string) {
+  const current = historyJobs.get(channelId);
+  if (current?.running) return { already: true as const, progress: current };
+  const progress: HistoryProgress = { running: true, scanned: 0, created: 0, updated: 0, skipped: 0, error: "" };
+  historyJobs.set(channelId, progress);
+  void runHistory(channelId, apiId, apiHash, session, progress);
+  return { already: false as const, progress };
+}
+
+async function runHistory(channelId: string, apiId: number, apiHash: string, session: string, progress: HistoryProgress) {
+  const { TelegramClient } = await import("telegram");
+  const { StringSession } = await import("telegram/sessions/index.js");
+  const client = new TelegramClient(new StringSession(session), apiId, apiHash, { connectionRetries: 2 });
+  try {
+    await client.connect();
+    const entity = await client.getEntity(channelId);
+    const albums = new Map<string, { id: number; text: string; photo: boolean }[]>();
+    const alone: { id: number; text: string; photo: boolean }[] = [];
+    for await (const msg of client.iterMessages(entity, { limit: 4000 })) {
+      const text = msg.message ?? "";
+      const photo = Boolean(msg.photo);
+      if (!text.trim() && !photo) continue;
+      const item = { id: msg.id, text, photo };
+      const group = msg.groupedId?.toString();
+      if (group) {
+        const list = albums.get(group) ?? [];
+        list.push(item);
+        albums.set(group, list);
+      } else alone.push(item);
+    }
+    const batches = [...alone.map((m) => [m]), ...albums.values()];
+    for (const batch of batches) {
+      const photos = new Map<string, Buffer>();
+      const parts: ImportPart[] = [];
+      for (const m of batch) {
+        let file: string | undefined;
+        if (m.photo) {
+          try {
+            const full = await client.getMessages(entity, { ids: m.id });
+            const media = full[0];
+            if (!media) continue;
+            const buf = (await client.downloadMedia(media, {})) as Buffer | undefined;
+            if (buf?.length && buf.length <= MAX_FILE) {
+              file = `buf:${m.id}`;
+              photos.set(file, buf);
+            }
+          } catch {
+            file = undefined;
+          }
+        }
+        parts.push({ sourceChat: channelId, messageId: m.id, text: m.text, photo: file });
+      }
+      const result = await serial(() => importPost(parts, true, photos)).catch(
+        (e): ImportResult => ({ status: "skipped", reason: (e as Error).message }),
+      );
+      progress.scanned++;
+      if (result.status === "created") progress.created++;
+      else if (result.status === "updated" || result.status === "sold") progress.updated++;
+      else progress.skipped++;
+    }
+  } catch (e) {
+    progress.error = (e as Error).message.slice(0, 300);
+  } finally {
+    progress.running = false;
+    await client.disconnect().catch(() => undefined);
+  }
 }

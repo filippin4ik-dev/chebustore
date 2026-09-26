@@ -140,6 +140,9 @@ export const importSettingsSchema = z.object({
   publish: z.boolean().default(true),
   stock: z.coerce.number().int().min(1).max(1000).default(1),
   categoryId: z.string().max(40).default(""),
+  mtApiId: z.coerce.number().int().min(0).max(2_000_000_000).default(0),
+  mtApiHash: z.string().max(64).default(""),
+  mtSessionSeal: z.string().max(8000).default(""),
 });
 
 export type ImportSettings = z.infer<typeof importSettingsSchema>;
