@@ -70,6 +70,27 @@ struct ThemePreset: Identifiable {
     ]
 }
 
+struct BackgroundPreset: Identifiable {
+    let name: String
+    let light: String
+    let dark: String
+    var id: String { name }
+
+    static let lightMin: CGFloat = 0.6
+    static let darkMax: CGFloat = 0.05
+
+    static let all: [BackgroundPreset] = [
+        .init(name: "Системный", light: "#F2F2F7", dark: "#000000"),
+        .init(name: "Белый", light: "#FFFFFF", dark: "#000000"),
+        .init(name: "Молочный", light: "#F5EFE6", dark: "#14110D"),
+        .init(name: "Мятный", light: "#EEF3EA", dark: "#0D1410"),
+        .init(name: "Небо", light: "#EAF1F8", dark: "#0B1220"),
+        .init(name: "Пудра", light: "#F7ECEF", dark: "#160D12"),
+        .init(name: "Лаванда", light: "#EFEDF6", dark: "#121016"),
+        .init(name: "Серый", light: "#E5E5EA", dark: "#101418"),
+    ]
+}
+
 struct BankAvatar: View {
     let bank: Bank
     var size: CGFloat = 28

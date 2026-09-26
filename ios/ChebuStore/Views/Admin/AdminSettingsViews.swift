@@ -2,7 +2,20 @@ import SwiftUI
 
 struct AdminMoreView: View {
     @Environment(AuthStore.self) private var auth
+    @Environment(\.openURL) private var openURL
     @State private var confirmLogout = false
+    @State private var testing = false
+    @State private var testSent = false
+    @State private var error: String?
+    private let push = PushManager.shared
+
+    private var pushStatusText: String {
+        switch push.status {
+        case .authorized, .provisional, .ephemeral: "Включены"
+        case .denied: "Выключены"
+        default: "Не настроены"
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -22,6 +35,35 @@ struct AdminMoreView: View {
                     NavigationLink { AdminSettingsView() } label: { Label("Магазин и реквизиты", systemImage: "gearshape") }
                     NavigationLink { AdminUsersView() } label: { Label("Пользователи", systemImage: "person.2") }
                 }
+                Section {
+                    LabeledContent {
+                        Text(pushStatusText)
+                    } label: {
+                        Label("Уведомления", systemImage: "bell.badge")
+                    }
+                    if push.status == .denied {
+                        Button("Включить в настройках iPhone") {
+                            if let url = URL(string: UIApplication.openNotificationSettingsURLString) { openURL(url) }
+                        }
+                    } else if push.status == .notDetermined {
+                        Button("Включить уведомления") { Task { await push.enable() } }
+                    } else {
+                        Button {
+                            Task { await sendTest() }
+                        } label: {
+                            HStack {
+                                Text("Отправить тестовое уведомление")
+                                if testing { Spacer(); ProgressView() }
+                            }
+                        }
+                        .disabled(testing)
+                    }
+                } header: {
+                    Text("Уведомления")
+                } footer: {
+                    Text(push.registrationError.map { "iPhone не выдал токен уведомлений: \($0)" }
+                        ?? "Новые заказы, чеки на проверку и отмены. На экране блокировки видны только номер заказа и сумма.")
+                }
                 Section("Безопасность") {
                     NavigationLink { SessionsView() } label: { Label("Устройства и сеансы", systemImage: "lock.shield") }
                 }
@@ -37,7 +79,19 @@ struct AdminMoreView: View {
             .confirmationDialog("Выйти из аккаунта?", isPresented: $confirmLogout, titleVisibility: .visible) {
                 Button("Выйти", role: .destructive) { Task { await auth.logout() } }
             }
+            .task { await push.refreshStatus() }
+            .errorAlert($error)
+            .sensoryFeedback(.success, trigger: testSent)
         }
+    }
+
+    private func sendTest() async {
+        testing = true
+        defer { testing = false }
+        do {
+            try await push.sendTest()
+            testSent.toggle()
+        } catch { self.error = error.localizedDescription }
     }
 }
 
@@ -176,24 +230,10 @@ struct AdminSettingsView: View {
                             ForEach(ThemePreset.all) { t in
                                 let active = t.light.caseInsensitiveCompare(store.accentLight) == .orderedSame
                                     && t.dark.caseInsensitiveCompare(store.accentDark) == .orderedSame
-                                Button {
+                                PresetSwatch(name: t.name, light: t.light, dark: t.dark, active: active) {
                                     self.store?.accentLight = t.light
                                     self.store?.accentDark = t.dark
-                                } label: {
-                                    VStack(spacing: 6) {
-                                        HStack(spacing: 0) {
-                                            Color(hex: t.light).frame(width: 18)
-                                            Color(hex: t.dark).frame(width: 18)
-                                        }
-                                        .frame(width: 36, height: 36)
-                                        .clipShape(Circle())
-                                        .overlay(Circle().strokeBorder(Color(.separator), lineWidth: 0.5))
-                                        .padding(3)
-                                        .overlay(Circle().strokeBorder(active ? Color.primary : .clear, lineWidth: 2))
-                                        Text(t.name).font(.caption2).foregroundStyle(.secondary)
-                                    }
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                         .padding(.vertical, 4)
@@ -204,6 +244,38 @@ struct AdminSettingsView: View {
                     Text("Оформление")
                 } footer: {
                     Text("Цвет кнопок и акцентов на сайте, в Telegram и в этом приложении.")
+                }
+                .disabled(!isAdmin)
+
+                Section {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 14) {
+                            ForEach(BackgroundPreset.all) { t in
+                                let active = t.light.caseInsensitiveCompare(store.bgLight) == .orderedSame
+                                    && t.dark.caseInsensitiveCompare(store.bgDark) == .orderedSame
+                                PresetSwatch(name: t.name, light: t.light, dark: t.dark, active: active) {
+                                    self.store?.bgLight = t.light
+                                    self.store?.bgDark = t.dark
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    ColorPicker("Светлая тема", selection: colorBinding(\.bgLight), supportsOpacity: false)
+                    ColorPicker("Тёмная тема", selection: colorBinding(\.bgDark), supportsOpacity: false)
+                    HStack(spacing: 12) {
+                        ThemeMock(bg: store.bgLight, surface: "#FFFFFF", label: .black, accent: store.accentLight)
+                        ThemeMock(bg: store.bgDark, surface: "#1C1C1E", label: .white, accent: store.accentDark)
+                    }
+                    .padding(.vertical, 4)
+                } header: {
+                    Text("Фон магазина")
+                } footer: {
+                    if let warning = backgroundWarning(store) {
+                        Text(warning).foregroundStyle(.red)
+                    } else {
+                        Text("Цвет фона страниц на сайте и в Telegram. Карточки остаются белыми днём и тёмными ночью.")
+                    }
                 }
                 .disabled(!isAdmin)
 
@@ -247,6 +319,17 @@ struct AdminSettingsView: View {
         )
     }
 
+    private func backgroundWarning(_ s: StoreSettings) -> String? {
+        var parts: [String] = []
+        if let c = UIColor(hex: s.bgLight), c.luminance < BackgroundPreset.lightMin {
+            parts.append("Фон светлой темы слишком тёмный — выберите цвет светлее.")
+        }
+        if let c = UIColor(hex: s.bgDark), c.luminance > BackgroundPreset.darkMax {
+            parts.append("Фон тёмной темы слишком светлый — выберите цвет темнее.")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+
     private func load() async {
         do {
             let r: SettingsEnvelope = try await APIClient.shared.get("/admin/settings")
@@ -276,11 +359,67 @@ struct AdminSettingsView: View {
             let _: [String: StoreSettings] = try await APIClient.shared.put("/admin/settings/store", [
                 "storeName": s.storeName, "supportTelegram": s.supportTelegram, "supportEmail": s.supportEmail,
                 "pickupAddress": s.pickupAddress, "deliveryPrices": deliveryPrices, "deliveryEnabled": s.deliveryEnabled,
-                "accentLight": s.accentLight, "accentDark": s.accentDark, "botWelcome": s.botWelcome, "botButton": s.botButton,
+                "accentLight": s.accentLight, "accentDark": s.accentDark, "bgLight": s.bgLight, "bgDark": s.bgDark, "botWelcome": s.botWelcome, "botButton": s.botButton,
             ])
             await auth.refreshConfig()
             saved.toggle()
         } catch { self.error = error.localizedDescription }
+    }
+}
+
+struct PresetSwatch: View {
+    let name: String
+    let light: String
+    let dark: String
+    let active: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                HStack(spacing: 0) {
+                    Color(hex: light).frame(width: 18)
+                    Color(hex: dark).frame(width: 18)
+                }
+                .frame(width: 36, height: 36)
+                .clipShape(Circle())
+                .overlay(Circle().strokeBorder(Color(.separator), lineWidth: 0.5))
+                .padding(3)
+                .overlay(Circle().strokeBorder(active ? Color.primary : .clear, lineWidth: 2))
+                Text(name).font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct ThemeMock: View {
+    let bg: String
+    let surface: String
+    let label: Color
+    let accent: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("CHEBU").font(.headline).foregroundStyle(label)
+            VStack(alignment: .leading, spacing: 6) {
+                RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.2)).frame(height: 40)
+                Capsule().fill(label.opacity(0.8)).frame(width: 70, height: 6)
+                Capsule().fill(label.opacity(0.35)).frame(width: 40, height: 6)
+                Text("В корзину")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.onAccent(ThemeColors(accentLight: accent, accentDark: accent)))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color(hex: accent), in: Capsule())
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(hex: surface), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(hex: bg), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color(.separator), lineWidth: 0.5))
     }
 }
 

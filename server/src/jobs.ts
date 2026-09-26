@@ -1,5 +1,5 @@
 import { prisma } from "./db.js";
-import { notifyStatus } from "./services/notify.js";
+import { notifyStaffCancelled, notifyStatus } from "./services/notify.js";
 import { transition } from "./services/orders.js";
 
 async function expireUnpaidOrders() {
@@ -17,6 +17,7 @@ async function expireUnpaidOrders() {
         note: "Автоотмена: оплата не поступила вовремя",
       });
       void notifyStatus(order, "Срок оплаты истёк, товары вернулись в продажу.");
+      notifyStaffCancelled(order, "Срок оплаты истёк, товары вернулись в продажу");
     } catch (e) {
       console.warn(`expire order ${id} skipped: ${(e as Error).message}`);
     }
@@ -27,6 +28,7 @@ async function cleanup() {
   const now = new Date();
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   await Promise.all([
+    prisma.pushDevice.deleteMany({ where: { session: { OR: [{ revokedAt: { not: null } }, { expiresAt: { lt: now } }] } } }),
     prisma.emailCode.deleteMany({ where: { createdAt: { lt: weekAgo } } }),
     prisma.telegramLogin.deleteMany({ where: { expiresAt: { lt: new Date(now.getTime() - 60 * 60 * 1000) } } }),
     prisma.session.deleteMany({ where: { OR: [{ expiresAt: { lt: weekAgo } }, { revokedAt: { lt: weekAgo } }] } }),

@@ -32,6 +32,11 @@ const schema = z.object({
 
   DADATA_API_KEY: z.string().optional(),
 
+  APNS_KEY_ID: z.string().trim().optional(),
+  APNS_TEAM_ID: z.string().trim().optional(),
+  APNS_KEY: z.string().optional(),
+  APNS_BUNDLE_ID: z.string().trim().default("ru.chebustore.app"),
+
   BOOTSTRAP_ADMIN_EMAILS: z.string().default(""),
   BOOTSTRAP_ADMIN_TELEGRAM_IDS: z.string().default(""),
 });

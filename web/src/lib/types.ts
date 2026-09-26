@@ -40,7 +40,7 @@ export interface PublicConfig {
   supportEmail: string;
   pickupAddress: string;
   delivery: { method: DeliveryMethod; price: number }[];
-  theme: { accentLight: string; accentDark: string };
+  theme: { accentLight: string; accentDark: string; bgLight: string; bgDark: string };
   addressSuggest: boolean;
   banks: Bank[];
 }
@@ -207,6 +207,8 @@ export interface StoreSettings {
   deliveryEnabled: Record<DeliveryMethod, boolean>;
   accentLight: string;
   accentDark: string;
+  bgLight: string;
+  bgDark: string;
   botWelcome: string;
   botButton: string;
 }

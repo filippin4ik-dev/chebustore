@@ -34,6 +34,21 @@ const hexColor = z
   .trim()
   .regex(/^#[0-9a-fA-F]{6}$/, "Цвет в формате #RRGGBB");
 
+function luminance(hex: string) {
+  const n = parseInt(hex.slice(1), 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+
+export const BG_LIGHT_MIN = 0.6;
+export const BG_DARK_MAX = 0.05;
+
+const bgLight = hexColor.refine((c) => luminance(c) >= BG_LIGHT_MIN, "Фон светлой темы слишком тёмный — текст будет плохо читаться");
+const bgDark = hexColor.refine((c) => luminance(c) <= BG_DARK_MAX, "Фон тёмной темы слишком светлый — текст будет плохо читаться");
+
 export const paymentSettingsSchema = z.object({
   sbpPhone: z.string().trim().max(32).default(""),
   sbpBank: bankField,
@@ -75,6 +90,8 @@ export const storeSettingsSchema = z.object({
   ),
   accentLight: hexColor.default("#000000"),
   accentDark: hexColor.default("#FFFFFF"),
+  bgLight: bgLight.default("#F2F2F7"),
+  bgDark: bgDark.default("#000000"),
   botWelcome: z.string().trim().min(1).max(3000).default(DEFAULT_WELCOME),
   botButton: z.string().trim().min(1).max(32).default("Открыть магазин"),
 });

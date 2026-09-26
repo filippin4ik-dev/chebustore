@@ -82,6 +82,7 @@ final class AuthStore {
     }
 
     func logout() async {
+        await PushManager.shared.disable()
         let _: OK? = try? await api.post("/auth/logout")
         api.token = nil
         user = nil

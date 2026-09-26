@@ -295,7 +295,42 @@ const tgIosDenied = await call("POST", "/api/auth/telegram/bot/poll", { body: { 
 assert.equal(tgIosDenied.status, 403);
 assert.equal(tgIosDenied.data.error.code, "staff_only");
 ok("telegram bot login into iOS admin app refused for customers");
+
+const devToken = "ab".repeat(32);
+const pushCust = await call("POST", "/api/push/device", { token: C, body: { token: devToken, environment: "sandbox" } });
+assert.equal(pushCust.status, 403);
+const pushBad = await call("POST", "/api/push/device", { token: A, body: { token: "xyz", environment: "sandbox" } });
+assert.equal(pushBad.status, 400);
+const pushReg = await call("POST", "/api/push/device", {
+  token: A,
+  body: { token: devToken.toUpperCase(), environment: "production" },
+});
+assert.equal(pushReg.status, 200, JSON.stringify(pushReg.data));
+assert.equal(pushReg.data.configured, false);
+const device = await prisma.pushDevice.findUnique({ where: { token: devToken } });
+assert.equal(device.environment, "PRODUCTION");
+const pushTest = await call("POST", "/api/push/test", { token: A });
+assert.equal(pushTest.status, 400);
+assert.equal(pushTest.data.error.code, "push_not_configured");
+await call("POST", "/api/push/device/remove", { token: A, body: { token: devToken } });
+assert.equal(await prisma.pushDevice.count({ where: { token: devToken } }), 0);
+ok("push devices: staff iOS only, token validated, bound to session, removable");
 await prisma.$disconnect();
+
+const current = (await call("GET", "/api/admin/settings", { token: A })).data.store;
+const darkLight = await call("PUT", "/api/admin/settings/store", { token: A, body: { ...current, bgLight: "#222222" } });
+assert.equal(darkLight.status, 400);
+const lightDark = await call("PUT", "/api/admin/settings/store", { token: A, body: { ...current, bgDark: "#EEEEEE" } });
+assert.equal(lightDark.status, 400);
+const bgSaved = await call("PUT", "/api/admin/settings/store", {
+  token: A,
+  body: { ...current, bgLight: "#F5EFE6", bgDark: "#14110D" },
+});
+assert.equal(bgSaved.status, 200, JSON.stringify(bgSaved.data));
+const publicCfg = await call("GET", "/api/config");
+assert.equal(publicCfg.data.theme.bgLight, "#F5EFE6");
+assert.equal(publicCfg.data.theme.bgDark, "#14110D");
+ok("store background: unreadable colors rejected, saved colors in public config");
 
 const audit = await call("GET", "/api/admin/audit", { token: A });
 assert.ok(audit.data.logs.some((l) => l.action === "payment.approve"));

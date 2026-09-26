@@ -6,6 +6,7 @@ import { prisma } from "../db.js";
 import { readReceipt } from "../lib/files.js";
 import { sendOrderUpdate } from "../lib/mailer.js";
 import { STATUS_TEXT } from "./orders.js";
+import { pushStaff } from "./push.js";
 
 const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
 export const rub = (kop: number) =>
@@ -71,6 +72,7 @@ export async function notifyStatus(order: Order, note = "") {
 }
 
 export async function notifyNewOrder(order: Order) {
+  void pushStaff({ title: `Новый заказ №${order.number}`, body: `${rub(order.total)} · ожидает оплаты`, order: order.number });
   const text = `🛍 Новый заказ <b>№${order.number}</b> на ${rub(order.total)}\n${esc(order.contactName)}, ${esc(order.contactPhone)}\nОжидает оплаты.`;
   const kb = new InlineKeyboard().url("Открыть в админке", `${config.PUBLIC_URL}/admin/orders/${order.number}`);
   for (const chat of await staffChats()) {
@@ -86,6 +88,7 @@ export async function notifyReceipt(order: Order, receipt: PaymentReceipt) {
   REJECT_REASONS.forEach((reason, i) => kb.text(`✕ ${reason}`, `rc:r:${order.id}:${i}`).row());
   kb.url("Открыть в админке", `${config.PUBLIC_URL}/admin/orders/${order.number}`);
 
+  void pushStaff({ title: `Чек по заказу №${order.number}`, body: `${rub(order.total)} · проверьте поступление и подтвердите оплату`, order: order.number });
   const file = await readReceipt(receipt.fileName);
   for (const chat of await staffChats()) {
     await safeSend(chat, (id) =>
@@ -102,6 +105,10 @@ export async function notifyReceipt(order: Order, receipt: PaymentReceipt) {
           }),
     );
   }
+}
+
+export function notifyStaffCancelled(order: Order, reason: string) {
+  void pushStaff({ title: `Заказ №${order.number} отменён`, body: reason, order: order.number });
 }
 
 export async function notifyNewLogin(user: User, method: string, userAgent: string) {

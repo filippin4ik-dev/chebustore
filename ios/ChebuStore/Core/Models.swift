@@ -73,6 +73,8 @@ struct Bank: Codable, Identifiable, Hashable {
 struct ThemeColors: Codable, Equatable {
     var accentLight: String
     var accentDark: String
+    var bgLight: String?
+    var bgDark: String?
 }
 
 struct PublicConfig: Codable {
@@ -261,6 +263,8 @@ struct StoreSettings: Codable {
     var deliveryEnabled: [String: Bool]
     var accentLight: String
     var accentDark: String
+    var bgLight: String
+    var bgDark: String
     var botWelcome: String
     var botButton: String
 }

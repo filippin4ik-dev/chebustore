@@ -4,7 +4,7 @@ import { ErrorState, PageLoader, Spinner } from "../components/ui";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { DELIVERY_HINT, DELIVERY_LABEL, DELIVERY_ORDER, toKopecks, toRubles } from "../lib/format";
-import { applyTheme, onColor, THEME_PRESETS } from "../lib/theme";
+import { applyTheme, BG_DARK_MAX, BG_LIGHT_MIN, BG_PRESETS, luminance, onColor, THEME_PRESETS } from "../lib/theme";
 import { useToast } from "../lib/toast";
 import type { DeliveryMethod, PaymentSettings, StoreSettings } from "../lib/types";
 
@@ -35,7 +35,7 @@ export default function AdminSettings() {
 
   useEffect(() => {
     if (store) applyTheme(store);
-  }, [store?.accentLight, store?.accentDark]);
+  }, [store?.accentLight, store?.accentDark, store?.bgLight, store?.bgDark]);
 
   useEffect(() => () => applyTheme(config?.theme), [config]);
 
@@ -56,7 +56,8 @@ export default function AdminSettings() {
         },
       });
       setStore(r.store);
-      if (config) config.theme = { accentLight: r.store.accentLight, accentDark: r.store.accentDark };
+      if (config)
+        config.theme = { accentLight: r.store.accentLight, accentDark: r.store.accentDark, bgLight: r.store.bgLight, bgDark: r.store.bgDark };
       toast("Настройки магазина сохранены");
     } catch (e) {
       toast(e instanceof ApiError ? e.message : "Ошибка", true);
@@ -80,6 +81,9 @@ export default function AdminSettings() {
   };
 
   const p = <K extends keyof PaymentSettings>(k: K, v: PaymentSettings[K]) => payment && setPayment({ ...payment, [k]: v });
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  const bgLightBad = luminance(store.bgLight) < BG_LIGHT_MIN;
+  const bgDarkBad = luminance(store.bgDark) > BG_DARK_MAX;
   const paymentReady = payment ? Boolean(payment.sbpPhone.trim() || payment.cardNumber.trim()) : true;
 
   return (
@@ -235,18 +239,54 @@ export default function AdminSettings() {
             <span className="color-value mono">{store.accentDark.toUpperCase()}</span>
             <input type="color" value={store.accentDark} onChange={(e) => set("accentDark", e.target.value.toUpperCase())} disabled={!isAdmin} />
           </label>
-          <div className="theme-preview">
-            <span className="btn small" style={{ background: store.accentLight, color: onColor(store.accentLight) }}>
-              Кнопка днём
-            </span>
-            <span className="theme-night">
-              <span className="btn small" style={{ background: store.accentDark, color: onColor(store.accentDark) }}>
-                Кнопка ночью
-              </span>
-            </span>
-          </div>
         </div>
         <div className="section-footer">Цвет кнопок, выбранных фильтров и акцентов на сайте, в Telegram и в приложении для сотрудников.</div>
+      </div>
+
+      <div className="section">
+        <div className="section-header">Фон магазина</div>
+        <div className="list">
+          <div className="theme-presets">
+            {BG_PRESETS.map((t) => {
+              const active = same(t.light, store.bgLight) && same(t.dark, store.bgDark);
+              return (
+                <button
+                  key={t.name}
+                  type="button"
+                  className={`theme-swatch${active ? " active" : ""}`}
+                  onClick={() => setStore({ ...store, bgLight: t.light, bgDark: t.dark })}
+                  disabled={!isAdmin}
+                  title={t.name}
+                >
+                  <span className="theme-swatch-dot" style={{ background: `linear-gradient(135deg, ${t.light} 50%, ${t.dark} 50%)` }} />
+                  <span className="caption">{t.name}</span>
+                </button>
+              );
+            })}
+          </div>
+          <label className="field color-field">
+            <span className="label">Светлая тема</span>
+            <span className="color-value mono">{store.bgLight.toUpperCase()}</span>
+            <input type="color" value={store.bgLight} onChange={(e) => set("bgLight", e.target.value.toUpperCase())} disabled={!isAdmin} />
+          </label>
+          <label className="field color-field">
+            <span className="label">Тёмная тема</span>
+            <span className="color-value mono">{store.bgDark.toUpperCase()}</span>
+            <input type="color" value={store.bgDark} onChange={(e) => set("bgDark", e.target.value.toUpperCase())} disabled={!isAdmin} />
+          </label>
+          <div className="theme-preview">
+            <ThemeMock bg={store.bgLight} surface="#FFFFFF" label="#000000" accent={store.accentLight} />
+            <ThemeMock bg={store.bgDark} surface="#1C1C1E" label="#FFFFFF" accent={store.accentDark} />
+          </div>
+        </div>
+        {bgLightBad || bgDarkBad ? (
+          <div className="section-footer text-red">
+            {bgLightBad ? "Фон светлой темы слишком тёмный — выберите цвет светлее. " : ""}
+            {bgDarkBad ? "Фон тёмной темы слишком светлый — выберите цвет темнее." : ""}
+          </div>
+        ) : (
+          <div className="section-footer">Цвет фона страниц на сайте и в Telegram. Карточки товаров остаются белыми днём и тёмными ночью.</div>
+        )}
       </div>
 
       <div className="section">
@@ -280,6 +320,22 @@ export default function AdminSettings() {
       ) : (
         <div className="section-footer">Изменять настройки может только администратор.</div>
       )}
+    </div>
+  );
+}
+
+function ThemeMock({ bg, surface, label, accent }: { bg: string; surface: string; label: string; accent: string }) {
+  return (
+    <div className="theme-mock" style={{ background: bg, color: label }}>
+      <div className="theme-mock-title">CHEBU</div>
+      <div className="theme-mock-card" style={{ background: surface }}>
+        <span className="theme-mock-img" />
+        <span className="theme-mock-line" />
+        <span className="theme-mock-line short" />
+        <span className="btn small" style={{ background: accent, color: onColor(accent) }}>
+          В корзину
+        </span>
+      </div>
     </div>
   );
 }

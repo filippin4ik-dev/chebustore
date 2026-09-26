@@ -8,7 +8,7 @@ import { readReceipt, saveReceipt } from "../lib/files.js";
 import { DELIVERY_METHODS, getPaymentSettings, getStoreSettings, paymentIsConfigured } from "../lib/settings.js";
 import { parse } from "../lib/validate.js";
 import { requireUser } from "../plugins/auth.js";
-import { notifyNewOrder, notifyReceipt, notifyStatus } from "../services/notify.js";
+import { notifyNewOrder, notifyReceipt, notifyStaffCancelled, notifyStatus } from "../services/notify.js";
 import { orderInclude, serializeOrder, transition } from "../services/orders.js";
 import { MAX_QTY } from "./cart.js";
 
@@ -212,6 +212,7 @@ export default async function orderRoutes(app: FastifyInstance) {
       note: "Отменён покупателем",
     });
     void notifyStatus(updated, "Вы отменили заказ.");
+    notifyStaffCancelled(updated, "Покупатель отменил заказ");
     const full = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
     return { order: serializeOrder(full, { staff: false }) };
   });

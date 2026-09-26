@@ -59,24 +59,26 @@ model User {
   updatedAt        DateTime  @updatedAt
   lastLoginAt      DateTime?
 
-  sessions  Session[]
-  cartItems CartItem[]
-  orders    Order[]
-  auditLogs AuditLog[]
+  sessions    Session[]
+  cartItems   CartItem[]
+  orders      Order[]
+  auditLogs   AuditLog[]
+  pushDevices PushDevice[]
 }
 
 model Session {
-  id         String        @id @default(cuid())
-  userId     String
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash  String        @unique
-  client     SessionClient
-  userAgent  String?
-  ip         String?
-  createdAt  DateTime      @default(now())
-  lastSeenAt DateTime      @default(now())
-  expiresAt  DateTime
-  revokedAt  DateTime?
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash   String        @unique
+  client      SessionClient
+  userAgent   String?
+  ip          String?
+  createdAt   DateTime      @default(now())
+  lastSeenAt  DateTime      @default(now())
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  pushDevices PushDevice[]
 
   @@index([userId])
 }
@@ -154,17 +156,17 @@ model ProductImage {
 }
 
 model ProductVariant {
-  id        String     @id @default(cuid())
-  productId String
-  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
-  size      String
-  color     String     @default("")
-  sku       String?    @unique
-  price     Int?
-  stock     Int        @default(0)
-  isActive  Boolean    @default(true)
-  sortOrder Int        @default(0)
-  cartItems CartItem[]
+  id         String      @id @default(cuid())
+  productId  String
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  size       String
+  color      String      @default("")
+  sku        String?     @unique
+  price      Int?
+  stock      Int         @default(0)
+  isActive   Boolean     @default(true)
+  sortOrder  Int         @default(0)
+  cartItems  CartItem[]
   orderItems OrderItem[]
 
   @@unique([productId, size, color])
@@ -276,4 +278,24 @@ model AuditLog {
 
   @@index([createdAt])
   @@index([entity, entityId])
+}
+
+enum PushEnvironment {
+  SANDBOX
+  PRODUCTION
+}
+
+model PushDevice {
+  id          String          @id @default(cuid())
+  token       String          @unique
+  environment PushEnvironment
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId   String
+  session     Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([userId])
+  @@index([sessionId])
 }

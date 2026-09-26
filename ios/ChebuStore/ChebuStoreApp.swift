@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct ChebuStoreApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var auth = AuthStore()
 
     var body: some Scene {
@@ -38,12 +39,30 @@ struct RootView: View {
                 Rectangle().fill(.background).ignoresSafeArea().overlay(BrandLogo(size: 120))
             }
         }
-        .onChange(of: scenePhase) { _, phase in privacyCover = phase != .active }
+        .onChange(of: scenePhase) { _, phase in
+            privacyCover = phase != .active
+            if phase == .active { Task { await syncPush() } }
+        }
+        .task { await PushManager.shared.requestIfNeeded() }
+        .task(id: auth.user?.id) { await syncPush() }
     }
+
+    private func syncPush() async {
+        if auth.user?.isStaff == true {
+            await PushManager.shared.enable()
+        } else {
+            await PushManager.shared.refreshStatus()
+        }
+    }
+}
+
+private struct OrderRef: Identifiable {
+    let id: Int
 }
 
 struct AdminTabs: View {
     @State private var tab = 0
+    private let push = PushManager.shared
 
     var body: some View {
         TabView(selection: $tab) {
@@ -59,6 +78,20 @@ struct AdminTabs: View {
             AdminMoreView()
                 .tabItem { Label("Ещё", systemImage: "ellipsis.circle") }
                 .tag(3)
+        }
+        .sheet(item: Binding(
+            get: { push.openOrder.map(OrderRef.init) },
+            set: { push.openOrder = $0?.id }
+        )) { ref in
+            NavigationStack {
+                AdminOrderDetailView(number: ref.id)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) { Button("Готово") { push.openOrder = nil } }
+                    }
+            }
+        }
+        .onChange(of: push.openOrder) { _, number in
+            if number != nil { tab = 1 }
         }
     }
 }

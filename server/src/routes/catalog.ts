@@ -22,7 +22,7 @@ export default async function catalogRoutes(app: FastifyInstance) {
         method: m,
         price: store.deliveryPrices[m],
       })),
-      theme: { accentLight: store.accentLight, accentDark: store.accentDark },
+      theme: { accentLight: store.accentLight, accentDark: store.accentDark, bgLight: store.bgLight, bgDark: store.bgDark },
       addressSuggest: Boolean(config.DADATA_API_KEY),
       banks: BANKS,
     };

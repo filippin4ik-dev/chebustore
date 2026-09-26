@@ -53,13 +53,7 @@ export async function initTelegram(): Promise<TgWebApp | null> {
   webApp = app;
   const applyTheme = () => {
     document.documentElement.dataset.theme = app.colorScheme;
-    const bg = app.colorScheme === "dark" ? "#000000" : "#f2f2f7";
-    try {
-      app.setHeaderColor(bg);
-      app.setBackgroundColor(bg);
-    } catch {
-      return;
-    }
+    syncTelegramChrome();
   };
   applyTheme();
   app.onEvent("themeChanged", applyTheme);
@@ -67,6 +61,18 @@ export async function initTelegram(): Promise<TgWebApp | null> {
   app.expand();
   app.disableVerticalSwipes?.();
   return app;
+}
+
+export function syncTelegramChrome() {
+  if (!webApp) return;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+  const color = /^#[0-9a-fA-F]{6}$/.test(bg) ? bg : webApp.colorScheme === "dark" ? "#000000" : "#f2f2f7";
+  try {
+    webApp.setHeaderColor(color);
+    webApp.setBackgroundColor(color);
+  } catch {
+    return;
+  }
 }
 
 export const tg = () => webApp;

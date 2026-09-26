@@ -17,6 +17,7 @@ import authRoutes from "./routes/auth.js";
 import cartRoutes from "./routes/cart.js";
 import catalogRoutes from "./routes/catalog.js";
 import orderRoutes from "./routes/orders.js";
+import pushRoutes from "./routes/push.js";
 import telegramRoutes from "./routes/telegram.js";
 
 export async function buildApp() {
@@ -106,6 +107,7 @@ export async function buildApp() {
   await app.register(orderRoutes);
   await app.register(adminRoutes);
   await app.register(addressRoutes);
+  await app.register(pushRoutes);
   await app.register(telegramRoutes);
 
   return app;

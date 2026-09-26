@@ -1,5 +1,5 @@
 :root {
-  --bg: #f2f2f7;
+  --bg: var(--bg-light, #f2f2f7);
   --bg-plain: #ffffff;
   --surface: #ffffff;
   --surface-2: #f2f2f7;
@@ -17,7 +17,7 @@
   --red: #ff3b30;
   --indigo: #5856d6;
   --teal: #30b0c7;
-  --bar: rgba(249, 249, 249, 0.82);
+  --bar: var(--bar-light, rgba(249, 249, 249, 0.82));
   --radius: 12px;
   --radius-lg: 16px;
   --shadow-sheet: 0 -1px 0 var(--separator);
@@ -30,7 +30,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #000000;
+    --bg: var(--bg-dark, #000000);
     --bg-plain: #000000;
     --surface: #1c1c1e;
     --surface-2: #2c2c2e;
@@ -46,13 +46,13 @@
     --green: #30d158;
     --orange: #ff9f0a;
     --red: #ff453a;
-    --bar: rgba(22, 22, 23, 0.82);
+    --bar: var(--bar-dark, rgba(22, 22, 23, 0.82));
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #000000;
+  --bg: var(--bg-dark, #000000);
   --bg-plain: #000000;
   --surface: #1c1c1e;
   --surface-2: #2c2c2e;
@@ -68,7 +68,7 @@
   --green: #30d158;
   --orange: #ff9f0a;
   --red: #ff453a;
-  --bar: rgba(22, 22, 23, 0.82);
+  --bar: var(--bar-dark, rgba(22, 22, 23, 0.82));
   color-scheme: dark;
 }
 
@@ -2015,11 +2015,56 @@ button.cell:active:not(:disabled) {
   pointer-events: none;
 }
 
-.theme-night {
-  display: inline-flex;
-  padding: 8px;
-  border-radius: 14px;
-  background: #1c1c1e;
+.section-footer.text-red {
+  color: var(--red);
+}
+
+.theme-mock {
+  flex: 1 1 150px;
+  min-width: 140px;
+  padding: 12px;
+  border-radius: 16px;
+  box-shadow: 0 0 0 0.5px var(--separator);
+  transition: background-color 0.25s;
+}
+
+.theme-mock-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 0 0 10px 2px;
+}
+
+.theme-mock-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 12px;
+}
+
+.theme-mock-img {
+  height: 56px;
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.18);
+}
+
+.theme-mock-line {
+  height: 8px;
+  width: 80%;
+  border-radius: 4px;
+  background: currentColor;
+  opacity: 0.8;
+}
+
+.theme-mock-line.short {
+  width: 45%;
+  opacity: 0.35;
+}
+
+.theme-mock .btn {
+  margin-top: 4px;
+  align-self: flex-start;
 }
 
 .tg-preview {
