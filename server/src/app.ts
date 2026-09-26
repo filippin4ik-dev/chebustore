@@ -106,6 +106,20 @@ export async function buildApp() {
     }
   });
 
+  app.get<{ Params: { file: string } }>("/media/bot/:file", async (req, reply) => {
+    if (!/^[A-Za-z0-9_-]+\.jpg$/.test(req.params.file)) return reply.status(404).send();
+    try {
+      const buf = await readFile(path.join(dirs.bot, req.params.file));
+      return reply
+        .header("Content-Type", "image/jpeg")
+        .header("Cache-Control", "public, max-age=31536000, immutable")
+        .header("Cross-Origin-Resource-Policy", "cross-origin")
+        .send(buf);
+    } catch {
+      return reply.status(404).send();
+    }
+  });
+
   await app.register(catalogRoutes);
   await app.register(authRoutes);
   await app.register(cartRoutes);

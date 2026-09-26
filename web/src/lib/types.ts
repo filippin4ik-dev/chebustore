@@ -211,4 +211,24 @@ export interface StoreSettings {
   bgDark: string;
   botWelcome: string;
   botButton: string;
+  botWelcomePhoto: string;
+  botHelp: string;
+  botStatusTexts: Record<OrderStatus, string>;
+}
+
+export interface ImportSettings {
+  enabled: boolean;
+  channelId: string;
+  channelTitle: string;
+  publish: boolean;
+  stock: number;
+  categoryId: string;
+}
+
+export interface ApnsPublic {
+  configured: boolean;
+  keyId: string;
+  teamId: string;
+  bundleId: string;
+  source: "env" | "admin" | null;
 }

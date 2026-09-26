@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { AuthImage, ErrorState, NavBar, PageLoader, Sheet, StatusBadge, useAsync } from "../components/ui";
 import { api, ApiError } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { dateTime, DELIVERY_LABEL, rub, STATUS_LABEL, userName } from "../lib/format";
 import { useToast } from "../lib/toast";
 import type { Order, OrderStatus, User } from "../lib/types";
@@ -18,6 +19,8 @@ const REJECT_REASONS = ["Платёж не найден", "Сумма не со�
 export default function AdminOrderDetail() {
   const { number = "" } = useParams();
   const toast = useToast();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const { data, error, loading, reload, refresh } = useAsync(() => api.get<Detail>(`/admin/orders/${encodeURIComponent(number)}`), [number]);
   useLive((e) => e.type === "orders" && (!e.number || String(e.number) === String(number)), () => void refresh());
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -75,6 +78,21 @@ export default function AdminOrderDetail() {
       });
       setStatusTarget(null);
     }, "Статус обновлён");
+
+  const remove = async () => {
+    const reserved = ["AWAITING_PAYMENT", "PAYMENT_REVIEW", "ASSEMBLING"].includes(order.status);
+    const text = `Удалить заказ №${order.number} навсегда?${reserved ? " Товары вернутся в продажу." : ""} Покупатель больше не увидит его, чеки будут удалены.`;
+    if (!confirm(text)) return;
+    setBusy(true);
+    try {
+      await api.del(`/admin/orders/${order.number}`);
+      toast(`Заказ №${order.number} удалён`);
+      navigate("/admin/orders", { replace: true });
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Ошибка", true);
+      setBusy(false);
+    }
+  };
 
   const moves = data.nextStatuses.filter((s) => s.status !== "PAYMENT_REVIEW" && s.status !== "AWAITING_PAYMENT");
 
@@ -260,6 +278,22 @@ export default function AdminOrderDetail() {
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="section">
+          <div className="list">
+            <Link className="cell action" to={`/admin/orders?user=${customer.id}`}>
+              Все заказы покупателя
+            </Link>
+            {user?.role === "ADMIN" && (
+              <button className="cell destructive" disabled={busy} onClick={remove}>
+                Удалить заказ
+              </button>
+            )}
+          </div>
+          {user?.role === "ADMIN" && (
+            <div className="section-footer">Удаление необратимо и записывается в журнал. Для обычной отмены используйте статус «Отменён».</div>
+          )}
         </div>
       </div>
 

@@ -267,6 +267,26 @@ struct StoreSettings: Codable {
     var bgDark: String
     var botWelcome: String
     var botButton: String
+    var botWelcomePhoto: String?
+    var botHelp: String?
+    var botStatusTexts: [String: String]?
+}
+
+struct ImportSettings: Codable {
+    var enabled: Bool
+    var channelId: String
+    var channelTitle: String
+    var publish: Bool
+    var stock: Int
+    var categoryId: String
+}
+
+struct ApnsPublic: Codable {
+    var configured: Bool
+    var keyId: String
+    var teamId: String
+    var bundleId: String
+    var source: String?
 }
 
 struct RevenueBucket: Codable { let sum: Int; let count: Int }
@@ -296,4 +316,11 @@ struct AdminProductEnvelope: Decodable { let product: AdminProduct }
 struct AdminCategoriesEnvelope: Decodable { let categories: [AdminCategory] }
 struct AdminUsersEnvelope: Decodable { let users: [AdminUser]; let total: Int }
 struct AdminUserEnvelope: Decodable { let user: AdminUser }
-struct SettingsEnvelope: Decodable { let store: StoreSettings; let payment: PaymentSettings? }
+struct SettingsEnvelope: Decodable {
+    let store: StoreSettings
+    let payment: PaymentSettings?
+    let importSettings: ImportSettings?
+    let apns: ApnsPublic?
+
+    enum CodingKeys: String, CodingKey { case store, payment, importSettings = "import", apns }
+}

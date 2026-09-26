@@ -2086,6 +2086,39 @@ button.cell:active:not(:disabled) {
   word-break: break-word;
 }
 
+.tg-bubble.with-photo {
+  padding: 0;
+  overflow: hidden;
+}
+
+.tg-bubble.with-photo .tg-text {
+  padding: 8px 12px;
+}
+
+.tg-photo {
+  display: block;
+  width: 100%;
+  max-height: 280px;
+  object-fit: cover;
+}
+
+.field.stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+.field.stacked label {
+  width: auto;
+  padding-top: 10px;
+  font-size: 13px;
+  color: var(--label-2);
+}
+
+.field.stacked textarea {
+  padding-top: 4px;
+}
+
 .tg-inline-btn {
   margin-top: 4px;
   text-align: center;

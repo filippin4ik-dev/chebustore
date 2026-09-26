@@ -21,7 +21,7 @@ export async function approvePayment(orderId: string, actorId: string, via: stri
     data: { reviewedAt: new Date(), reviewerId: actorId, approved: true },
   });
   await audit(actorId, "payment.approve", "order", orderId, { number: order.number, via }, ip);
-  void notifyStatus(updated, "Оплата получена, спасибо! Мы начали собирать заказ.");
+  void notifyStatus(updated);
   return updated;
 }
 

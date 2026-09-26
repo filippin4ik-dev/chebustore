@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { BANKS, bankIds } from "./banks.js";
+import { open, seal } from "./crypto.js";
 
 export const DELIVERY_METHODS = ["CDEK", "RUSSIAN_POST", "HAND"] as const;
 export type DeliveryMethodKey = (typeof DELIVERY_METHODS)[number];
@@ -69,6 +70,32 @@ const price = z.coerce.number().int().min(0).max(10_000_000).default(0);
 export const DEFAULT_WELCOME =
   "Привет! Это CHEBU.\n\nКаталог, корзина и статусы заказов — внутри приложения. Нажмите кнопку ниже, чтобы открыть магазин.";
 
+export const ORDER_STATUSES = [
+  "AWAITING_PAYMENT",
+  "PAYMENT_REVIEW",
+  "ASSEMBLING",
+  "SHIPPED",
+  "READY_FOR_PICKUP",
+  "COMPLETED",
+  "CANCELLED",
+] as const;
+
+export const DEFAULT_STATUS_TEXTS: Record<(typeof ORDER_STATUSES)[number], string> = {
+  AWAITING_PAYMENT: "Ожидает оплаты. Реквизиты и сумма — внутри заказа.",
+  PAYMENT_REVIEW: "Чек получен, проверяем оплату.",
+  ASSEMBLING: "Оплата получена, спасибо! Собираем заказ.",
+  SHIPPED: "Заказ передан в доставку.",
+  READY_FOR_PICKUP: "Заказ прибыл, можно забирать.",
+  COMPLETED: "Заказ получен. Спасибо за покупку!",
+  CANCELLED: "Заказ отменён.",
+};
+
+export const DEFAULT_HELP =
+  "/start — открыть магазин\n/orders — мои заказы\n\nПо вопросам заказа напишите в поддержку из профиля в магазине.";
+
+const statusText = (s: (typeof ORDER_STATUSES)[number]) =>
+  z.string().trim().min(1).max(500).catch(DEFAULT_STATUS_TEXTS[s]).default(DEFAULT_STATUS_TEXTS[s]);
+
 export const storeSettingsSchema = z.object({
   storeName: z.string().trim().min(1).max(64).default("CHEBU"),
   supportTelegram: z.string().trim().max(64).default(""),
@@ -94,7 +121,47 @@ export const storeSettingsSchema = z.object({
   bgDark: bgDark.default("#000000"),
   botWelcome: z.string().trim().min(1).max(3000).default(DEFAULT_WELCOME),
   botButton: z.string().trim().min(1).max(32).default("Открыть магазин"),
+  botWelcomePhoto: z
+    .string()
+    .regex(/^([A-Za-z0-9_-]+\.jpg)?$/)
+    .default(""),
+  botHelp: z.string().trim().min(1).max(2000).default(DEFAULT_HELP),
+  botStatusTexts: z
+    .object(Object.fromEntries(ORDER_STATUSES.map((s) => [s, statusText(s)])) as {
+      [K in (typeof ORDER_STATUSES)[number]]: ReturnType<typeof statusText>;
+    })
+    .default({}),
 });
+
+export const importSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  channelId: z.string().max(32).default(""),
+  channelTitle: z.string().max(128).default(""),
+  publish: z.boolean().default(true),
+  stock: z.coerce.number().int().min(1).max(1000).default(1),
+  categoryId: z.string().max(40).default(""),
+});
+
+export type ImportSettings = z.infer<typeof importSettingsSchema>;
+
+export const apnsSettingsSchema = z.object({
+  keyId: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^([A-Z0-9]{10})?$/, "Key ID — 10 латинских букв и цифр")
+    .default(""),
+  teamId: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^([A-Z0-9]{10})?$/, "Team ID — 10 латинских букв и цифр")
+    .default(""),
+  bundleId: z.string().trim().min(1).max(200).default("ru.chebustore.app"),
+  keySeal: z.string().max(8000).default(""),
+});
+
+export type ApnsSettings = z.infer<typeof apnsSettingsSchema>;
 
 export type PaymentSettings = z.infer<typeof paymentSettingsSchema>;
 export type StoreSettings = z.infer<typeof storeSettingsSchema>;
@@ -115,6 +182,29 @@ async function read<T>(key: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>)
 
 export const getPaymentSettings = () => read("payment", paymentSettingsSchema);
 export const getStoreSettings = () => read("store", storeSettingsSchema);
+export const getImportSettings = () => read("import", importSettingsSchema);
+export const getApnsSettings = () => read("apns", apnsSettingsSchema);
+
+export function apnsKeyPlain(s: ApnsSettings) {
+  if (!s.keySeal) return "";
+  try {
+    return open("apns-key", s.keySeal);
+  } catch {
+    return "";
+  }
+}
+
+export function sealApnsKey(pem: string) {
+  return seal("apns-key", pem);
+}
+
+export async function saveImportSettings(value: ImportSettings) {
+  await prisma.setting.upsert({ where: { key: "import" }, create: { key: "import", value }, update: { value } });
+}
+
+export async function saveApnsSettings(value: ApnsSettings) {
+  await prisma.setting.upsert({ where: { key: "apns" }, create: { key: "apns", value }, update: { value } });
+}
 
 export async function savePaymentSettings(value: PaymentSettings) {
   await prisma.setting.upsert({ where: { key: "payment" }, create: { key: "payment", value }, update: { value } });

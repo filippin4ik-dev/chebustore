@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../components/Icon";
+import { Link } from "react-router-dom";
 import { ErrorState, PageLoader, Sheet, useAsync } from "../components/ui";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -55,7 +56,7 @@ export default function AdminUsers() {
       <h1 className="large-title">Пользователи</h1>
       <label className="search">
         <Icon name="search" size={18} />
-        <input type="search" placeholder="Почта, @username, имя, телефон" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input type="search" placeholder="Имя, фамилия, телефон, почта, @username, Telegram ID" value={q} onChange={(e) => setQ(e.target.value)} />
       </label>
       <div className="chips mt-16">
         {(["", "CUSTOMER", "MANAGER", "ADMIN"] as const).map((r) => (
@@ -116,6 +117,13 @@ export default function AdminUsers() {
                 <div className="cell-main">Последний вход</div>
                 <div className="cell-value">{selected.lastLoginAt ? dateTime(selected.lastLoginAt) : "—"}</div>
               </div>
+              <Link className="cell" to={`/admin/orders?user=${selected.id}`}>
+                <div className="cell-main">Заказы</div>
+                <div className="cell-value">{selected.orderCount}</div>
+                <span className="cell-chevron">
+                  <Icon name="chevronRight" size={18} stroke={2} />
+                </span>
+              </Link>
             </div>
             {isAdmin && selected.id !== me?.id && (
               <>

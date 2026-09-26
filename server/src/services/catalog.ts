@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { prisma } from "../db.js";
 
 export const productInclude = {
   images: { orderBy: { sortOrder: "asc" } },
@@ -59,6 +60,15 @@ export function serializeProductAdmin(p: FullProduct) {
       sortOrder: v.sortOrder,
     })),
   };
+}
+
+export async function uniqueSlug(base: string, excludeId?: string) {
+  let slug = base || "item";
+  for (let i = 2; ; i++) {
+    const found = await prisma.product.findUnique({ where: { slug } });
+    if (!found || found.id === excludeId) return slug;
+    slug = `${base || "item"}-${i}`;
+  }
 }
 
 export function slugify(input: string) {

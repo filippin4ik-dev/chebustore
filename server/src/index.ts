@@ -4,6 +4,7 @@ import { bot } from "./bot/instance.js";
 import { config } from "./config.js";
 import { prisma } from "./db.js";
 import { startJobs } from "./jobs.js";
+import { apnsProblem } from "./lib/apns.js";
 import { ensureDirs } from "./lib/files.js";
 
 process.on("unhandledRejection", (e) => console.error("unhandled rejection:", e));
@@ -14,6 +15,8 @@ async function main() {
   const app = await buildApp();
   await app.listen({ port: config.PORT, host: config.HOST });
   startJobs();
+  const apns = await apnsProblem();
+  if (apns) app.log.warn(`push notifications disabled: ${apns}`);
 
   const launchBot = () =>
     startBot().catch((e) => {

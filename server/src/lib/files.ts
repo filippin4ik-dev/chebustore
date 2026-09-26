@@ -8,11 +8,13 @@ import { badRequest } from "./errors.js";
 const root = path.resolve(config.DATA_DIR);
 export const dirs = {
   products: path.join(root, "media", "products"),
+  bot: path.join(root, "media", "bot"),
   receipts: path.join(root, "private", "receipts"),
 };
 
 export async function ensureDirs() {
   await mkdir(dirs.products, { recursive: true });
+  await mkdir(dirs.bot, { recursive: true });
   await mkdir(dirs.receipts, { recursive: true, mode: 0o700 });
 }
 
@@ -61,6 +63,35 @@ export async function saveProductImage(buf: Buffer) {
 
 export async function deleteProductImage(fileName: string) {
   await unlink(path.join(dirs.products, safeName(fileName))).catch(() => undefined);
+}
+
+export async function saveBotImage(buf: Buffer) {
+  const kind = sniff(buf);
+  if (!kind || kind === "pdf") throw badRequest("Поддерживаются JPEG, PNG и WEBP");
+  let out;
+  try {
+    out = await sharp(buf, { limitInputPixels: 60_000_000, failOn: "error" })
+      .rotate()
+      .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 88, mozjpeg: true })
+      .toBuffer();
+  } catch {
+    throw badRequest(kind === "heic" ? "HEIC не поддерживается — сохраните фото как JPEG" : "Не удалось обработать изображение");
+  }
+  const fileName = `${randomToken(18)}.jpg`;
+  await writeFile(path.join(dirs.bot, fileName), out, { mode: 0o644 });
+  return fileName;
+}
+
+export const botImagePath = (fileName: string) => path.join(dirs.bot, safeName(fileName));
+
+export async function deleteBotImage(fileName: string) {
+  if (!fileName) return;
+  await unlink(botImagePath(fileName)).catch(() => undefined);
+}
+
+export async function deleteReceipt(fileName: string) {
+  await unlink(path.join(dirs.receipts, safeName(fileName))).catch(() => undefined);
 }
 
 export async function saveReceipt(buf: Buffer) {

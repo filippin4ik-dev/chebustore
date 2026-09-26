@@ -1,27 +1,60 @@
 import type { FastifyInstance } from "fastify";
-import type { OrderStatus, Prisma } from "@prisma/client";
+import { Prisma, type OrderStatus } from "@prisma/client";
 import { z } from "zod";
 import { config } from "../config.js";
 import { prisma } from "../db.js";
 import { audit } from "../lib/audit.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
-import { deleteProductImage, saveProductImage } from "../lib/files.js";
+import { bot } from "../bot/instance.js";
+import { deleteBotImage, deleteProductImage, deleteReceipt, saveBotImage, saveProductImage } from "../lib/files.js";
+import { publish, publishOrder } from "../lib/live.js";
+import { apnsPublic, parseApnsKey, resetApns } from "../lib/apns.js";
 import {
+  getImportSettings,
   getPaymentSettings,
   getStoreSettings,
+  importSettingsSchema,
+  saveApnsSettings,
+  saveImportSettings,
   paymentSettingsSchema,
   savePaymentSettings,
   saveStoreSettings,
+  sealApnsKey,
   storeSettingsSchema,
 } from "../lib/settings.js";
 import { parse } from "../lib/validate.js";
 import { requireAdmin, requireStaff } from "../plugins/auth.js";
-import { productInclude, serializeProductAdmin, slugify } from "../services/catalog.js";
+import { productInclude, serializeProductAdmin, slugify, uniqueSlug } from "../services/catalog.js";
 import { notifyStatus } from "../services/notify.js";
 import { nextStatuses, orderInclude, serializeOrder, STATUS_TEXT, transition } from "../services/orders.js";
 import { approvePayment, rejectPayment } from "../services/payments.js";
 import { publicUser, revokeAllSessions } from "../services/sessions.js";
 import { sendReceiptFile } from "./orders.js";
+
+const RESERVED: OrderStatus[] = ["AWAITING_PAYMENT", "PAYMENT_REVIEW", "ASSEMBLING"];
+
+function searchWords(q?: string) {
+  return (q ?? "").split(/\s+/).map((w) => w.trim()).filter(Boolean).slice(0, 5);
+}
+
+async function phoneMatches(table: "Order" | "User", column: "contactPhone" | "phone", word: string) {
+  let digits = word.replace(/[\s()+\-]/g, "");
+  if (!/^\d{4,15}$/.test(digits)) return [];
+  if (digits.length === 11 && digits.startsWith("8")) digits = `7${digits.slice(1)}`;
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT id FROM ${Prisma.raw(`"${table}"`)}
+    WHERE regexp_replace(${Prisma.raw(`"${column}"`)}, '[^0-9]', '', 'g') LIKE ${`%${digits}%`}
+    LIMIT 500`;
+  return rows.map((r) => r.id);
+}
+
+function channelRef(raw: string): string | null {
+  const v = raw.trim();
+  if (!v) return null;
+  if (/^-100\d{5,15}$/.test(v)) return v;
+  const m = v.match(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\/([A-Za-z][A-Za-z0-9_]{3,31})\/?$/i) ?? v.match(/^@?([A-Za-z][A-Za-z0-9_]{3,31})$/);
+  return m ? `@${m[1]}` : null;
+}
 
 const statusEnum = z.enum([
   "AWAITING_PAYMENT",
@@ -75,24 +108,30 @@ export default async function adminRoutes(app: FastifyInstance) {
       z.object({
         status: statusEnum.optional(),
         q: z.string().trim().max(80).optional(),
+        user: id.optional(),
         page: z.coerce.number().int().min(1).max(1000).default(1),
       }),
       req.query,
     );
-    const num = q.q && /^\d+$/.test(q.q) ? Number(q.q) : undefined;
     const where: Prisma.OrderWhereInput = {
       ...(q.status ? { status: q.status } : {}),
-      ...(q.q
-        ? {
-            OR: [
-              ...(num ? [{ number: num }] : []),
-              { contactName: { contains: q.q, mode: "insensitive" } },
-              { contactPhone: { contains: q.q } },
-              { user: { email: { contains: q.q, mode: "insensitive" } } },
-              { user: { telegramUsername: { contains: q.q.replace(/^@/, ""), mode: "insensitive" } } },
-            ],
-          }
-        : {}),
+      ...(q.user ? { userId: q.user } : {}),
+      AND: await Promise.all(searchWords(q.q).map(async (w) => {
+        const num = /^\d{1,9}$/.test(w.replace(/^№/, "")) ? Number(w.replace(/^№/, "")) : undefined;
+        const phoneIds = await phoneMatches("Order", "contactPhone", w);
+        return {
+          OR: [
+            ...(num ? [{ number: num }] : []),
+            { contactName: { contains: w, mode: "insensitive" } },
+            { contactPhone: { contains: w } },
+            ...(phoneIds.length ? [{ id: { in: phoneIds } }] : []),
+            { user: { email: { contains: w, mode: "insensitive" } } },
+            { user: { telegramUsername: { contains: w.replace(/^@/, ""), mode: "insensitive" } } },
+            { user: { firstName: { contains: w, mode: "insensitive" } } },
+            { user: { lastName: { contains: w, mode: "insensitive" } } },
+          ],
+        } satisfies Prisma.OrderWhereInput;
+      })),
     };
     const pageSize = 30;
     const [orders, total] = await Promise.all([
@@ -116,6 +155,43 @@ export default async function adminRoutes(app: FastifyInstance) {
     if (!order) throw notFound("Заказ не найден");
     return order;
   }
+
+  app.delete<{ Params: { number: string } }>("/api/admin/orders/:number", async (req) => {
+    const actor = requireAdmin(req);
+    const found = await findOrder(req.params.number);
+    const receipts = await prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: found.id },
+        include: { items: true, receipts: { select: { fileName: true } } },
+      });
+      if (!order) throw notFound("Заказ не найден");
+      if (RESERVED.includes(order.status)) {
+        for (const item of order.items) {
+          if (item.variantId) {
+            await tx.productVariant.updateMany({
+              where: { id: item.variantId },
+              data: { stock: { increment: item.quantity } },
+            });
+          }
+        }
+      }
+      await tx.order.delete({ where: { id: order.id } });
+      return order.receipts;
+    });
+    for (const r of receipts) await deleteReceipt(r.fileName);
+    await audit(
+      actor.id,
+      "order.delete",
+      "order",
+      found.id,
+      { number: found.number, status: found.status, total: found.total, customer: found.userId },
+      req.ip,
+    );
+    publishOrder({ userId: found.userId, number: found.number });
+    publish("staff", { type: "orders" });
+    if (RESERVED.includes(found.status)) publish("all", { type: "catalog" });
+    return { ok: true };
+  });
 
   app.get<{ Params: { number: string } }>("/api/admin/orders/:number", async (req) => {
     requireStaff(req);
@@ -288,15 +364,6 @@ export default async function adminRoutes(app: FastifyInstance) {
     sortOrder: z.number().int().min(-10000).max(10000).default(0),
   });
 
-  async function uniqueSlug(base: string, excludeId?: string) {
-    let slug = base;
-    for (let i = 2; ; i++) {
-      const found = await prisma.product.findUnique({ where: { slug } });
-      if (!found || found.id === excludeId) return slug;
-      slug = `${base}-${i}`;
-    }
-  }
-
   app.post("/api/admin/products", async (req) => {
     const actor = requireStaff(req);
     const body = parse(productBody, req.body);
@@ -428,8 +495,81 @@ export default async function adminRoutes(app: FastifyInstance) {
 
   app.get("/api/admin/settings", async (req) => {
     const actor = requireStaff(req);
-    const [payment, store] = await Promise.all([getPaymentSettings(), getStoreSettings()]);
-    return { store, payment: actor.role === "ADMIN" ? payment : null };
+    const [payment, store, channelImport, apns] = await Promise.all([
+      getPaymentSettings(),
+      getStoreSettings(),
+      getImportSettings(),
+      apnsPublic(),
+    ]);
+    return { store, payment: actor.role === "ADMIN" ? payment : null, import: channelImport, apns };
+  });
+
+  app.put("/api/admin/settings/import", async (req) => {
+    const actor = requireAdmin(req);
+    const body = parse(
+      z.object({
+        enabled: z.boolean(),
+        channel: z.string().trim().max(128).default(""),
+        publish: z.boolean().default(true),
+        stock: z.coerce.number().int().min(1).max(1000).default(1),
+        categoryId: z.union([id, z.literal("")]).default(""),
+      }),
+      req.body,
+    );
+    if (body.categoryId && !(await prisma.category.findUnique({ where: { id: body.categoryId } }))) {
+      throw badRequest("Категория не найдена");
+    }
+    const current = await getImportSettings();
+    let channelId = "";
+    let channelTitle = "";
+    const ref = channelRef(body.channel);
+    if (body.channel && ref === null) throw badRequest("Укажите канал как @имя, ссылку t.me/имя или числовой ID");
+    if (ref !== null && ref === current.channelId) {
+      channelId = current.channelId;
+      channelTitle = current.channelTitle;
+    } else if (ref !== null) {
+      const chat = await bot.api.getChat(ref).catch(() => null);
+      if (!chat || chat.type !== "channel") {
+        throw badRequest("Канал не найден. Добавьте бота в канал администратором и попробуйте ещё раз");
+      }
+      const me = await bot.api.getMe();
+      const member = await bot.api.getChatMember(chat.id, me.id).catch(() => null);
+      if (!member || (member.status !== "administrator" && member.status !== "creator")) {
+        throw badRequest("Бот не администратор этого канала. Добавьте его в администраторы канала");
+      }
+      channelId = String(chat.id);
+      channelTitle = chat.title;
+    }
+    if (body.enabled && !channelId) throw badRequest("Укажите канал, из которого добавлять товары");
+    const value = importSettingsSchema.parse({ ...body, channelId, channelTitle });
+    await saveImportSettings(value);
+    await audit(actor.id, "settings.import", "setting", "import", value, req.ip);
+    return { import: value };
+  });
+
+  app.post("/api/admin/settings/welcome-photo", async (req) => {
+    const actor = requireAdmin(req);
+    const file = await req.file({ limits: { fileSize: config.productImageMaxBytes, files: 1 } });
+    if (!file) throw badRequest("Прикрепите изображение");
+    const buf = await file.toBuffer().catch(() => {
+      throw badRequest("Файл слишком большой");
+    });
+    const fileName = await saveBotImage(buf);
+    const store = await getStoreSettings();
+    const previous = store.botWelcomePhoto;
+    await saveStoreSettings({ ...store, botWelcomePhoto: fileName });
+    await deleteBotImage(previous);
+    await audit(actor.id, "settings.welcome_photo", "setting", "store", { fileName }, req.ip);
+    return { store: { ...store, botWelcomePhoto: fileName } };
+  });
+
+  app.delete("/api/admin/settings/welcome-photo", async (req) => {
+    const actor = requireAdmin(req);
+    const store = await getStoreSettings();
+    await saveStoreSettings({ ...store, botWelcomePhoto: "" });
+    await deleteBotImage(store.botWelcomePhoto);
+    await audit(actor.id, "settings.welcome_photo.delete", "setting", "store", undefined, req.ip);
+    return { store: { ...store, botWelcomePhoto: "" } };
   });
 
   app.put("/api/admin/settings/payment", async (req) => {
@@ -442,10 +582,46 @@ export default async function adminRoutes(app: FastifyInstance) {
 
   app.put("/api/admin/settings/store", async (req) => {
     const actor = requireAdmin(req);
-    const body = parse(storeSettingsSchema, req.body);
+    const current = await getStoreSettings();
+    const body = parse(storeSettingsSchema, {
+      ...current,
+      ...(req.body && typeof req.body === "object" ? req.body : {}),
+      botWelcomePhoto: current.botWelcomePhoto,
+    });
     await saveStoreSettings(body);
     await audit(actor.id, "settings.store", "setting", "store", body, req.ip);
     return { store: body };
+  });
+
+  app.put("/api/admin/settings/apns", async (req) => {
+    const actor = requireAdmin(req);
+    const body = parse(
+      z.object({
+        keyId: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{10}$/, "Key ID — 10 латинских букв и цифр"),
+        teamId: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{10}$/, "Team ID — 10 латинских букв и цифр"),
+        bundleId: z.string().trim().min(3).max(200).default("ru.chebustore.app"),
+        key: z.string().min(80, "Вставьте содержимое файла .p8").max(8000),
+      }),
+      req.body,
+    );
+    if (!parseApnsKey(body.key)) throw badRequest("Ключ .p8 не читается. Вставьте файл целиком");
+    await saveApnsSettings({
+      keyId: body.keyId,
+      teamId: body.teamId,
+      bundleId: body.bundleId,
+      keySeal: sealApnsKey(body.key),
+    });
+    resetApns();
+    await audit(actor.id, "settings.apns", "setting", "apns", { keyId: body.keyId, teamId: body.teamId, bundleId: body.bundleId }, req.ip);
+    return { apns: await apnsPublic() };
+  });
+
+  app.delete("/api/admin/settings/apns", async (req) => {
+    const actor = requireAdmin(req);
+    await saveApnsSettings({ keyId: "", teamId: "", bundleId: "ru.chebustore.app", keySeal: "" });
+    resetApns();
+    await audit(actor.id, "settings.apns.delete", "setting", "apns", undefined, req.ip);
+    return { apns: await apnsPublic() };
   });
 
   app.get("/api/admin/users", async (req) => {
@@ -460,16 +636,23 @@ export default async function adminRoutes(app: FastifyInstance) {
     );
     const where: Prisma.UserWhereInput = {
       ...(q.role ? { role: q.role } : {}),
-      ...(q.q
-        ? {
-            OR: [
-              { email: { contains: q.q, mode: "insensitive" } },
-              { telegramUsername: { contains: q.q.replace(/^@/, ""), mode: "insensitive" } },
-              { firstName: { contains: q.q, mode: "insensitive" } },
-              { phone: { contains: q.q } },
-            ],
-          }
-        : {}),
+      AND: await Promise.all(searchWords(q.q).map(async (w) => {
+        const phoneIds = await phoneMatches("User", "phone", w);
+        const orderPhoneIds = await phoneMatches("Order", "contactPhone", w);
+        return {
+          OR: [
+            { email: { contains: w, mode: "insensitive" } },
+            { telegramUsername: { contains: w.replace(/^@/, ""), mode: "insensitive" } },
+            { firstName: { contains: w, mode: "insensitive" } },
+            { lastName: { contains: w, mode: "insensitive" } },
+            { phone: { contains: w } },
+            ...(phoneIds.length ? [{ id: { in: phoneIds } }] : []),
+            ...(orderPhoneIds.length ? [{ orders: { some: { id: { in: orderPhoneIds } } } }] : []),
+            ...(/^\d{5,15}$/.test(w) ? [{ telegramId: BigInt(w) }] : []),
+            { orders: { some: { contactName: { contains: w, mode: "insensitive" } } } },
+          ],
+        } satisfies Prisma.UserWhereInput;
+      })),
     };
     const pageSize = 50;
     const [users, total] = await Promise.all([

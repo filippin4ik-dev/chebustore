@@ -1,4 +1,6 @@
+import PhotosUI
 import SwiftUI
+import UIKit
 
 struct AdminMoreView: View {
     @Environment(AuthStore.self) private var auth
@@ -154,6 +156,15 @@ struct AdminSettingsView: View {
     @State private var prices: [String: String] = [:]
     @State private var error: String?
     @State private var saved = false
+    @State private var imp: ImportSettings?
+    @State private var channel = ""
+    @State private var categories: [AdminCategory] = []
+    @State private var apns: ApnsPublic?
+    @State private var apnsKeyId = ""
+    @State private var apnsTeamId = ""
+    @State private var apnsBundle = "ru.chebustore.app"
+    @State private var apnsKey = ""
+    @State private var welcomeItem: PhotosPickerItem?
 
     private var isAdmin: Bool { auth.user?.role == .ADMIN }
     private var banks: [Bank] { auth.config?.banks ?? [] }
@@ -282,10 +293,46 @@ struct AdminSettingsView: View {
                 Section {
                     TextField("Текст приветствия", text: bindStore(\.botWelcome), axis: .vertical).lineLimit(4...12)
                     TextField("Текст кнопки", text: bindStore(\.botButton))
+                    if isAdmin {
+                        PhotosPicker(selection: $welcomeItem, matching: .images) {
+                            Label(store.botWelcomePhoto?.isEmpty == false ? "Заменить фото приветствия" : "Добавить фото к приветствию", systemImage: "photo")
+                        }
+                        if store.botWelcomePhoto?.isEmpty == false {
+                            Button("Убрать фото", role: .destructive) { Task { await removeWelcomePhoto() } }
+                        }
+                    }
                 } header: {
                     Text("Приветствие бота")
                 } footer: {
-                    Text("Бот отправляет это сообщение на /start. Кнопка открывает магазин.")
+                    Text("Бот отправляет это на /start. Фото необязательно.")
+                }
+                .disabled(!isAdmin)
+
+                Section {
+                    ForEach(OrderStatus.allCases) { st in
+                        TextField(st.title, text: Binding(
+                            get: { store.botStatusTexts?[st.rawValue] ?? "" },
+                            set: {
+                                var texts = store.botStatusTexts ?? [:]
+                                texts[st.rawValue] = $0
+                                self.store?.botStatusTexts = texts
+                            }
+                        ), axis: .vertical).lineLimit(2...4)
+                    }
+                } header: {
+                    Text("Сообщения о заказе")
+                } footer: {
+                    Text("Текст покупателю при смене статуса. Можно вставить {номер} и {сумма}.")
+                }
+                .disabled(!isAdmin)
+
+                Section {
+                    TextField("Ответ на /help", text: Binding(
+                        get: { store.botHelp ?? "" },
+                        set: { self.store?.botHelp = $0 }
+                    ), axis: .vertical).lineLimit(3...8)
+                } header: {
+                    Text("Команда /help")
                 }
                 .disabled(!isAdmin)
 
@@ -294,12 +341,56 @@ struct AdminSettingsView: View {
                 } else {
                     Section { Text("Изменять настройки может только администратор.").foregroundStyle(.secondary) }
                 }
+
+                if isAdmin, let a = apns {
+                    Section {
+                        LabeledContent("Статус", value: a.configured ? "Ключи заданы" : "Ключи не заданы")
+                        if a.source != "env" {
+                            TextField("Key ID", text: $apnsKeyId).textInputAutocapitalization(.characters)
+                            TextField("Team ID", text: $apnsTeamId).textInputAutocapitalization(.characters)
+                            TextField("Bundle ID", text: $apnsBundle).textInputAutocapitalization(.never)
+                            TextField("Содержимое файла .p8", text: $apnsKey, axis: .vertical).lineLimit(4...10)
+                            Button("Сохранить ключи Apple") { Task { await saveApns() } }.disabled(apnsKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            if a.configured && a.source == "admin" {
+                                Button("Удалить ключи", role: .destructive) { Task { await clearApns() } }
+                            }
+                        } else {
+                            Text("Сейчас используются значения из .env на сервере.").foregroundStyle(.secondary)
+                        }
+                    } header: {
+                        Text("Уведомления на iPhone")
+                    } footer: {
+                        Text("developer.apple.com → Keys → ключ с галочкой APNs. Key ID на странице ключа, Team ID справа вверху. Файл .p8 хранится только на сервере.")
+                    }
+                }
+
+                if isAdmin, imp != nil {
+                    Section {
+                        Toggle("Добавлять товары из канала", isOn: Binding(get: { self.imp?.enabled ?? false }, set: { self.imp?.enabled = $0 }))
+                        TextField("@канал или -100…", text: $channel).textInputAutocapitalization(.never)
+                        Toggle("Сразу публиковать", isOn: Binding(get: { self.imp?.publish ?? true }, set: { self.imp?.publish = $0 }))
+                        Stepper("Остаток: \(self.imp?.stock ?? 1)", value: Binding(get: { self.imp?.stock ?? 1 }, set: { self.imp?.stock = $0 }), in: 1...100)
+                        Picker("Категория", selection: Binding(get: { self.imp?.categoryId ?? "" }, set: { self.imp?.categoryId = $0 })) {
+                            Text("Угадывать по названию").tag("")
+                            ForEach(categories) { c in Text(c.name).tag(c.id) }
+                        }
+                        Button("Сохранить импорт") { Task { await saveImport() } }
+                    } header: {
+                        Text("Импорт из канала")
+                    } footer: {
+                        Text((self.imp?.channelTitle.isEmpty ?? true) ? "Добавьте бота администратором канала. Из поста берутся название, цена, размер, состояние, описание и фото." : "Канал: \(self.imp?.channelTitle ?? "")")
+                    }
+                }
             } else {
                 ProgressView().frame(maxWidth: .infinity)
             }
         }
         .navigationTitle("Настройки")
         .task { await load() }
+        .onChange(of: welcomeItem) { _, item in
+            guard let item else { return }
+            Task { await uploadWelcome(item) }
+        }
         .errorAlert($error)
         .sensoryFeedback(.success, trigger: saved)
     }
@@ -336,6 +427,13 @@ struct AdminSettingsView: View {
             store = r.store
             payment = r.payment
             prices = r.store.deliveryPrices.mapValues { Format.rubles($0) }
+            imp = r.importSettings
+            channel = r.importSettings?.channelId ?? ""
+            apns = r.apns
+            apnsKeyId = r.apns?.keyId ?? ""
+            apnsTeamId = r.apns?.teamId ?? ""
+            apnsBundle = r.apns?.bundleId ?? "ru.chebustore.app"
+            if let cats: AdminCategoriesEnvelope = try? await APIClient.shared.get("/admin/categories") { categories = cats.categories }
             if auth.config == nil { await auth.refreshConfig() }
         } catch { self.error = error.localizedDescription }
     }
@@ -359,9 +457,64 @@ struct AdminSettingsView: View {
             let _: [String: StoreSettings] = try await APIClient.shared.put("/admin/settings/store", [
                 "storeName": s.storeName, "supportTelegram": s.supportTelegram, "supportEmail": s.supportEmail,
                 "pickupAddress": s.pickupAddress, "deliveryPrices": deliveryPrices, "deliveryEnabled": s.deliveryEnabled,
-                "accentLight": s.accentLight, "accentDark": s.accentDark, "bgLight": s.bgLight, "bgDark": s.bgDark, "botWelcome": s.botWelcome, "botButton": s.botButton,
+                "accentLight": s.accentLight, "accentDark": s.accentDark, "bgLight": s.bgLight, "bgDark": s.bgDark,
+                "botWelcome": s.botWelcome, "botButton": s.botButton, "botHelp": s.botHelp ?? "", "botStatusTexts": s.botStatusTexts ?? [:],
             ])
             await auth.refreshConfig()
+            saved.toggle()
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func uploadWelcome(_ item: PhotosPickerItem) async {
+        defer { welcomeItem = nil }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data),
+                  let jpeg = image.jpegData(compressionQuality: 0.9) else { return }
+            let r: SettingsEnvelope = try await APIClient.shared.upload("/admin/settings/welcome-photo", data: jpeg, filename: "welcome.jpg", mimeType: "image/jpeg")
+            store = r.store
+            saved.toggle()
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func removeWelcomePhoto() async {
+        do {
+            let r: SettingsEnvelope = try await APIClient.shared.delete("/admin/settings/welcome-photo")
+            store = r.store
+            saved.toggle()
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func saveApns() async {
+        do {
+            let r: [String: ApnsPublic] = try await APIClient.shared.put("/admin/settings/apns", [
+                "keyId": apnsKeyId, "teamId": apnsTeamId, "bundleId": apnsBundle, "key": apnsKey,
+            ])
+            apns = r["apns"]
+            apnsKey = ""
+            saved.toggle()
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func clearApns() async {
+        do {
+            let r: [String: ApnsPublic] = try await APIClient.shared.delete("/admin/settings/apns")
+            apns = r["apns"]
+            apnsKeyId = ""
+            apnsTeamId = ""
+            apnsKey = ""
+            saved.toggle()
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func saveImport() async {
+        guard let imp else { return }
+        do {
+            let r: [String: ImportSettings] = try await APIClient.shared.put("/admin/settings/import", [
+                "enabled": imp.enabled, "channel": channel, "publish": imp.publish, "stock": imp.stock, "categoryId": imp.categoryId,
+            ])
+            self.imp = r["import"]
+            channel = r["import"]?.channelId ?? channel
             saved.toggle()
         } catch { self.error = error.localizedDescription }
     }

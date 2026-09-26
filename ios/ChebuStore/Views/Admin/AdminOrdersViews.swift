@@ -168,10 +168,13 @@ struct AdminOrdersView: View {
 
 struct AdminOrderDetailView: View {
     let number: Int
+    @Environment(AuthStore.self) private var auth
+    @Environment(\.dismiss) private var dismiss
     @State private var detail: AdminOrderDetail?
     @State private var error: String?
     @State private var busy = false
     @State private var confirmApprove = false
+    @State private var confirmDelete = false
     @State private var showReject = false
     @State private var rejectReason = ""
     @State private var target: OrderStatus?
@@ -287,6 +290,14 @@ struct AdminOrderDetailView: View {
                     Text("Заметка для команды")
                 }
 
+                if auth.user?.role == .ADMIN {
+                    Section {
+                        Button("Удалить заказ", role: .destructive) { confirmDelete = true }
+                    } footer: {
+                        Text("Удаление необратимо. Для обычной отмены используйте статус «Отменён».")
+                    }
+                }
+
                 Section("История") {
                     ForEach(Array(o.history.reversed().enumerated()), id: \.offset) { _, h in
                         VStack(alignment: .leading, spacing: 2) {
@@ -308,6 +319,9 @@ struct AdminOrderDetailView: View {
         .task { await load() }
         .confirmationDialog("Подтвердить получение оплаты?", isPresented: $confirmApprove, titleVisibility: .visible) {
             Button("Оплата получена") { Task { await act("/admin/orders/\(number)/approve", [:]) } }
+        }
+        .confirmationDialog("Удалить заказ №\(number) навсегда?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Удалить", role: .destructive) { Task { await deleteOrder() } }
         }
         .sheet(isPresented: $showReject) { rejectSheet }
         .sheet(item: $target) { st in statusSheet(st) }
@@ -392,6 +406,16 @@ struct AdminOrderDetailView: View {
             let _: OK = try await APIClient.shared.post(path, body)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             await load()
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func deleteOrder() async {
+        busy = true
+        defer { busy = false }
+        do {
+            let _: OK = try await APIClient.shared.delete("/admin/orders/\(number)")
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            dismiss()
         } catch { self.error = error.localizedDescription }
     }
 

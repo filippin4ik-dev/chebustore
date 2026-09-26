@@ -17,8 +17,8 @@ Object.assign(process.env, {
 
 test("apns: key pasted as one line is accepted and JWT verifies", async () => {
   const { apnsConfigured, providerToken } = await import("../src/lib/apns.ts");
-  assert.equal(apnsConfigured(), true);
-  const jwt = providerToken();
+  assert.equal(await apnsConfigured(), true);
+  const jwt = await providerToken();
   const [h, p, s] = jwt.split(".");
   const header = JSON.parse(Buffer.from(h!, "base64url").toString());
   const payload = JSON.parse(Buffer.from(p!, "base64url").toString());
@@ -31,5 +31,5 @@ test("apns: key pasted as one line is accepted and JWT verifies", async () => {
     Buffer.from(s!, "base64url"),
   );
   assert.equal(ok, true);
-  assert.equal(providerToken(), jwt);
+  assert.equal(await providerToken(), jwt);
 });

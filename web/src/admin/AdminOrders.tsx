@@ -15,13 +15,15 @@ export default function AdminOrders() {
   const [q, setQ] = useState(params.get("q") ?? "");
   const [page, setPage] = useState(1);
   const query = params.get("q") ?? "";
+  const userFilter = params.get("user") ?? "";
 
   const { data, error, loading, reload, refresh } = useAsync(() => {
     const qs = new URLSearchParams({ page: String(page) });
     if (status) qs.set("status", status);
     if (query) qs.set("q", query);
+    if (userFilter) qs.set("user", userFilter);
     return api.get<{ orders: Order[]; total: number; pageSize: number }>(`/admin/orders?${qs}`);
-  }, [status, query, page]);
+  }, [status, query, userFilter, page]);
   useLive(["orders"], () => void refresh());
 
   useEffect(() => {
@@ -44,6 +46,22 @@ export default function AdminOrders() {
         <Icon name="search" size={18} />
         <input type="search" placeholder="Номер, имя, телефон, почта, @username" value={q} onChange={(e) => setQ(e.target.value)} />
       </label>
+      {userFilter && (
+        <div className="banner mt-8 row-flex">
+          <span className="spacer">Заказы одного покупателя{data?.orders[0] ? ` · ${data.orders[0].contactName}` : ""}</span>
+          <button
+            className="btn small gray"
+            onClick={() => {
+              const next = new URLSearchParams(params);
+              next.delete("user");
+              setPage(1);
+              setParams(next, { replace: true });
+            }}
+          >
+            Все заказы
+          </button>
+        </div>
+      )}
       <div className="chips mt-16">
         {FILTERS.map((f) => (
           <button

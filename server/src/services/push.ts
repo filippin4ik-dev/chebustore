@@ -11,7 +11,8 @@ export interface PushMessage {
 }
 
 export async function pushToDevices(where: Prisma.PushDeviceWhereInput, msg: PushMessage) {
-  if (!apnsConfigured()) return 0;
+  const failures: string[] = [];
+  if (!(await apnsConfigured())) return { sent: 0, devices: 0, failures };
   const devices = await prisma.pushDevice.findMany({
     where: {
       ...where,
@@ -32,18 +33,22 @@ export async function pushToDevices(where: Prisma.PushDeviceWhereInput, msg: Pus
   await Promise.all(
     devices.map(async (d) => {
       const r = await sendApns(d.environment, d.token, payload);
-      if (r.ok) sent++;
-      else if (r.status === 410 || (r.reason && DEAD_TOKEN.has(r.reason))) {
+      if (r.ok) {
+        sent++;
+        return;
+      }
+      failures.push(r.reason ?? String(r.status));
+      if (r.status === 410 || (r.reason && DEAD_TOKEN.has(r.reason))) {
         await prisma.pushDevice.deleteMany({ where: { id: d.id } });
       } else console.warn(`apns push failed: ${r.status} ${r.reason ?? ""}`);
     }),
   );
-  return sent;
+  return { sent, devices: devices.length, failures };
 }
 
 export function pushStaff(msg: PushMessage) {
   return pushToDevices({}, msg).catch((e) => {
     console.warn(`push failed: ${(e as Error).message}`);
-    return 0;
+    return null;
   });
 }

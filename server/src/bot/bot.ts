@@ -1,7 +1,10 @@
-import { InlineKeyboard } from "grammy";
+import { InlineKeyboard, InputFile, type Context } from "grammy";
+import type { Message } from "grammy/types";
 import { config } from "../config.js";
 import { prisma } from "../db.js";
+import { botImagePath } from "../lib/files.js";
 import { getStoreSettings } from "../lib/settings.js";
+import { channelAllowed, collect, updateFromEdit, type ImportPart, type ImportResult } from "../services/channelImport.js";
 import { REJECT_REASONS, rub } from "../services/notify.js";
 import { STATUS_TEXT } from "../services/orders.js";
 import { approvePayment, rejectPayment } from "../services/payments.js";
@@ -42,6 +45,53 @@ async function staffByTelegram(tgId: number) {
   return user;
 }
 
+let welcomePhoto = { file: "", id: "" };
+
+async function sendWelcome(ctx: Context) {
+  const store = await getStoreSettings();
+  const markup = new InlineKeyboard().webApp(store.botButton, shopUrl());
+  if (store.botWelcomePhoto) {
+    const photo = welcomePhoto.file === store.botWelcomePhoto ? welcomePhoto.id : new InputFile(botImagePath(store.botWelcomePhoto));
+    const fits = store.botWelcome.length <= 1024;
+    try {
+      const sent = await ctx.replyWithPhoto(photo, fits ? { caption: store.botWelcome, reply_markup: markup } : {});
+      const id = sent.photo?.[sent.photo.length - 1]?.file_id;
+      if (id) welcomePhoto = { file: store.botWelcomePhoto, id };
+      if (fits) return;
+    } catch (e) {
+      welcomePhoto = { file: "", id: "" };
+      console.warn(`welcome photo failed: ${(e as Error).message}`);
+    }
+  }
+  await ctx.reply(store.botWelcome, { reply_markup: markup, link_preview_options: { is_disabled: true } });
+}
+
+function toPart(msg: Message, sourceChat: string, messageId: number): ImportPart {
+  return {
+    sourceChat,
+    messageId,
+    text: msg.caption ?? msg.text ?? "",
+    photo: msg.photo?.[msg.photo.length - 1]?.file_id,
+    groupId: msg.media_group_id,
+  };
+}
+
+const answered = new WeakSet<ImportResult>();
+
+function describeResult(r: ImportResult) {
+  const link = (id: string) => `${config.PUBLIC_URL}/admin/products/${id}`;
+  if (r.status === "skipped") return { text: `Не удалось добавить товар: ${r.reason}.` };
+  const title = `${r.product.title} — ${rub(r.product.basePrice)}`;
+  const text =
+    r.status === "created"
+      ? `✅ Товар добавлен: ${title}
+Фото: ${r.photos}${r.product.isActive && r.photos ? "" : "\nТовар скрыт — проверьте и опубликуйте."}`
+      : r.status === "sold"
+        ? `Отмечено как продано: ${title}`
+        : `Товар обновлён: ${title}`;
+  return { text, kb: new InlineKeyboard().url("Открыть в админке", link(r.product.id)) };
+}
+
 export function setupBot() {
   bot.catch((err) => console.error("bot error:", err.error));
 
@@ -52,11 +102,23 @@ export function setupBot() {
       await askLoginConfirmation(ctx.reply.bind(ctx), payload.slice(6));
       return;
     }
-    const store = await getStoreSettings();
-    await ctx.reply(store.botWelcome, {
-      reply_markup: new InlineKeyboard().webApp(store.botButton, shopUrl()),
-      link_preview_options: { is_disabled: true },
+    await sendWelcome(ctx);
+  });
+
+  bot.on("channel_post", async (ctx) => {
+    const msg = ctx.channelPost;
+    if (!(await channelAllowed(msg.chat.id))) return;
+    void collect(toPart(msg, String(msg.chat.id), msg.message_id), true).then((r) => {
+      if (r.status === "skipped") console.info(`import: post ${msg.message_id} skipped: ${r.reason}`);
     });
+  });
+
+  bot.on("edited_channel_post", async (ctx) => {
+    const msg = ctx.editedChannelPost;
+    if (!(await channelAllowed(msg.chat.id))) return;
+    void updateFromEdit(toPart(msg, String(msg.chat.id), msg.message_id)).catch((e) =>
+      console.warn(`import: edit failed: ${(e as Error).message}`),
+    );
   });
 
   bot.callbackQuery(/^tl:(a|d):([A-Za-z0-9_-]{22})$/, async (ctx) => {
@@ -102,9 +164,10 @@ export function setupBot() {
     await ctx.reply("Ваши последние заказы:", { reply_markup: kb });
   });
 
-  bot.command("help", (ctx) =>
-    ctx.reply("/start — открыть магазин\n/orders — мои заказы\n\nПо вопросам заказа ответьте в поддержку из профиля в приложении."),
-  );
+  bot.command("help", async (ctx) => {
+    const store = await getStoreSettings();
+    await ctx.reply(store.botHelp, { link_preview_options: { is_disabled: true } });
+  });
 
   bot.callbackQuery(/^rc:(a|r):([a-z0-9]{10,40})(?::(\d))?$/, async (ctx) => {
     const staff = await staffByTelegram(ctx.from.id);
@@ -129,6 +192,29 @@ export function setupBot() {
     } catch (e) {
       await ctx.answerCallbackQuery({ text: (e as Error).message.slice(0, 190), show_alert: true });
     }
+  });
+
+  bot.on("message", async (ctx) => {
+    const msg = ctx.message;
+    if (ctx.chat.type !== "private" || !ctx.from) return;
+    const origin = msg.forward_origin;
+    const fromChannel = origin?.type === "channel";
+    if (!fromChannel && !msg.photo) return;
+    if (!(await staffByTelegram(ctx.from.id))) return;
+    const part = fromChannel
+      ? toPart(msg, String(origin.chat.id), origin.message_id)
+      : toPart(msg, `dm${ctx.from.id}`, msg.message_id);
+    const chatId = ctx.chat.id;
+    void collect(part, false).then(async (r) => {
+      if (answered.has(r)) return;
+      answered.add(r);
+      const { text, kb } = describeResult(r);
+      const hint =
+        fromChannel && !(await channelAllowed(origin.chat.id))
+          ? `\n\nКанал «${origin.chat.title}», ID ${origin.chat.id}. Чтобы новые посты добавлялись сами, добавьте бота в администраторы канала и укажите этот ID в админке → Настройки → Импорт из канала.`
+          : "";
+      await bot.api.sendMessage(chatId, text + hint, kb ? { reply_markup: kb } : {}).catch(() => undefined);
+    });
   });
 }
 
@@ -155,12 +241,12 @@ export async function startBot() {
   if (config.TELEGRAM_USE_WEBHOOK) {
     await bot.api.setWebhook(`${config.PUBLIC_URL}/api/telegram/webhook`, {
       secret_token: config.TELEGRAM_WEBHOOK_SECRET,
-      allowed_updates: ["message", "callback_query"],
+      allowed_updates: ["message", "callback_query", "channel_post", "edited_channel_post"],
       drop_pending_updates: false,
     });
     console.info("telegram: webhook mode");
   } else {
     await bot.api.deleteWebhook();
-    void bot.start({ allowed_updates: ["message", "callback_query"], onStart: () => console.info("telegram: polling mode") });
+    void bot.start({ allowed_updates: ["message", "callback_query", "channel_post", "edited_channel_post"], onStart: () => console.info("telegram: polling mode") });
   }
 }

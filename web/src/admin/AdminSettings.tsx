@@ -1,12 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BankPicker } from "../components/Bank";
 import { ErrorState, PageLoader, Spinner } from "../components/ui";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { DELIVERY_HINT, DELIVERY_LABEL, DELIVERY_ORDER, toKopecks, toRubles } from "../lib/format";
+import { DELIVERY_HINT, DELIVERY_LABEL, DELIVERY_ORDER, STATUS_LABEL, toKopecks, toRubles } from "../lib/format";
 import { applyTheme, BG_DARK_MAX, BG_LIGHT_MIN, BG_PRESETS, luminance, onColor, THEME_PRESETS } from "../lib/theme";
 import { useToast } from "../lib/toast";
-import type { DeliveryMethod, PaymentSettings, StoreSettings } from "../lib/types";
+import type { AdminCategory, ApnsPublic, DeliveryMethod, ImportSettings, OrderStatus, PaymentSettings, StoreSettings } from "../lib/types";
+
+const STATUS_ORDER: OrderStatus[] = [
+  "AWAITING_PAYMENT",
+  "PAYMENT_REVIEW",
+  "ASSEMBLING",
+  "SHIPPED",
+  "READY_FOR_PICKUP",
+  "COMPLETED",
+  "CANCELLED",
+];
 
 export default function AdminSettings() {
   const { user, config } = useAuth();
@@ -16,14 +26,28 @@ export default function AdminSettings() {
   const [payment, setPayment] = useState<PaymentSettings | null>(null);
   const [prices, setPrices] = useState<Record<DeliveryMethod, string>>({ CDEK: "", RUSSIAN_POST: "", HAND: "" });
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState<"store" | "payment" | null>(null);
+  const [saving, setSaving] = useState<"store" | "payment" | "import" | "photo" | "apns" | null>(null);
+  const [imp, setImp] = useState<ImportSettings | null>(null);
+  const [channel, setChannel] = useState("");
+  const [categories, setCategories] = useState<AdminCategory[]>([]);
+  const [apns, setApns] = useState<ApnsPublic | null>(null);
+  const [apnsForm, setApnsForm] = useState({ keyId: "", teamId: "", bundleId: "ru.chebustore.app", key: "" });
+  const photoInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api
-      .get<{ store: StoreSettings; payment: PaymentSettings | null }>("/admin/settings")
+      .get<{ categories: AdminCategory[] }>("/admin/categories")
+      .then((r) => setCategories(r.categories))
+      .catch(() => undefined);
+    api
+      .get<{ store: StoreSettings; payment: PaymentSettings | null; import: ImportSettings; apns: ApnsPublic }>("/admin/settings")
       .then((r) => {
         setStore(r.store);
         setPayment(r.payment);
+        setImp(r.import);
+        setChannel(r.import.channelId);
+        setApns(r.apns);
+        setApnsForm({ keyId: r.apns.keyId, teamId: r.apns.teamId, bundleId: r.apns.bundleId, key: "" });
         setPrices({
           CDEK: toRubles(r.store.deliveryPrices.CDEK),
           RUSSIAN_POST: toRubles(r.store.deliveryPrices.RUSSIAN_POST),
@@ -80,6 +104,78 @@ export default function AdminSettings() {
     }
   };
 
+  const saveImport = async () => {
+    if (!imp) return;
+    setSaving("import");
+    try {
+      const r = await api.put<{ import: ImportSettings }>("/admin/settings/import", { ...imp, channel });
+      setImp(r.import);
+      setChannel(r.import.channelId);
+      toast(r.import.enabled ? `Импорт включён: ${r.import.channelTitle}` : "Импорт выключен");
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Ошибка", true);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const uploadPhoto = async (file: File) => {
+    setSaving("photo");
+    try {
+      const r = await api.upload<{ store: StoreSettings }>("/admin/settings/welcome-photo", file);
+      setStore({ ...store, botWelcomePhoto: r.store.botWelcomePhoto });
+      toast("Фото приветствия сохранено");
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Ошибка", true);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const removePhoto = async () => {
+    setSaving("photo");
+    try {
+      await api.del("/admin/settings/welcome-photo");
+      setStore({ ...store, botWelcomePhoto: "" });
+      toast("Фото убрано");
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Ошибка", true);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const saveApns = async () => {
+    setSaving("apns");
+    try {
+      const r = await api.put<{ apns: ApnsPublic }>("/admin/settings/apns", apnsForm);
+      setApns(r.apns);
+      setApnsForm({ keyId: r.apns.keyId, teamId: r.apns.teamId, bundleId: r.apns.bundleId, key: "" });
+      toast("Ключи Apple сохранены на сервере. На iPhone откройте приложение и отправьте тестовое уведомление.");
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Ошибка", true);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const clearApns = async () => {
+    if (!confirm("Удалить ключи Apple с сервера? Уведомления на iPhone перестанут приходить, пока не вставите ключи снова.")) return;
+    setSaving("apns");
+    try {
+      const r = await api.del<{ apns: ApnsPublic }>("/admin/settings/apns");
+      setApns(r.apns);
+      setApnsForm({ keyId: "", teamId: "", bundleId: r.apns.bundleId || "ru.chebustore.app", key: "" });
+      toast("Ключи удалены");
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Ошибка", true);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const setStatusText = (s: OrderStatus, v: string) => set("botStatusTexts", { ...store.botStatusTexts, [s]: v });
+  const i = <K extends keyof ImportSettings>(k: K, v: ImportSettings[K]) => imp && setImp({ ...imp, [k]: v });
   const p = <K extends keyof PaymentSettings>(k: K, v: PaymentSettings[K]) => payment && setPayment({ ...payment, [k]: v });
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
   const bgLightBad = luminance(store.bgLight) < BG_LIGHT_MIN;
@@ -292,6 +388,35 @@ export default function AdminSettings() {
       <div className="section">
         <div className="section-header">Приветствие бота</div>
         <div className="list">
+          <div className="cell">
+            <div className="cell-main">
+              <div className="cell-title">Фото к приветствию</div>
+              <div className="cell-sub">{store.botWelcomePhoto ? "Отправляется вместе с текстом на /start" : "Необязательно. JPEG, PNG или WEBP"}</div>
+            </div>
+            {isAdmin && (
+              <div className="row-flex">
+                {store.botWelcomePhoto && (
+                  <button className="btn small danger" onClick={removePhoto} disabled={saving !== null}>
+                    Убрать
+                  </button>
+                )}
+                <button className="btn small gray" onClick={() => photoInput.current?.click()} disabled={saving !== null}>
+                  {saving === "photo" ? <Spinner /> : store.botWelcomePhoto ? "Заменить" : "Выбрать"}
+                </button>
+                <input
+                  ref={photoInput}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (f) void uploadPhoto(f);
+                  }}
+                />
+              </div>
+            )}
+          </div>
           <div className="field">
             <textarea
               value={store.botWelcome}
@@ -308,8 +433,45 @@ export default function AdminSettings() {
           </div>
         </div>
         <div className="tg-preview">
-          <div className="tg-bubble">{store.botWelcome || "…"}</div>
+          <div className={`tg-bubble${store.botWelcomePhoto ? " with-photo" : ""}`}>
+            {store.botWelcomePhoto && <img className="tg-photo" src={`/media/bot/${store.botWelcomePhoto}`} alt="" />}
+            <div className="tg-text">{store.botWelcome || "…"}</div>
+          </div>
           <div className="tg-inline-btn">{store.botButton || "Открыть магазин"}</div>
+        </div>
+        {store.botWelcomePhoto && store.botWelcome.length > 1024 && (
+          <div className="section-footer">Текст длиннее 1024 символов — бот отправит фото и текст отдельными сообщениями.</div>
+        )}
+      </div>
+
+      <div className="section">
+        <div className="section-header">Сообщения о заказе</div>
+        <div className="list">
+          {STATUS_ORDER.map((s) => (
+            <div className="field stacked" key={s}>
+              <label>{STATUS_LABEL[s]}</label>
+              <textarea
+                value={store.botStatusTexts[s]}
+                onChange={(e) => setStatusText(s, e.target.value)}
+                maxLength={500}
+                disabled={!isAdmin}
+                style={{ minHeight: 48 }}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="section-footer">
+          Бот и почта отправляют покупателю этот текст при смене статуса. Можно вставить {"{номер}"} и {"{сумма}"}. Трек-номер, место
+          выдачи и причина отклонения чека добавляются автоматически.
+        </div>
+      </div>
+
+      <div className="section">
+        <div className="section-header">Команда /help</div>
+        <div className="list">
+          <div className="field">
+            <textarea value={store.botHelp} onChange={(e) => set("botHelp", e.target.value)} maxLength={2000} disabled={!isAdmin} style={{ minHeight: 96 }} />
+          </div>
         </div>
       </div>
 
@@ -319,6 +481,140 @@ export default function AdminSettings() {
         </button>
       ) : (
         <div className="section-footer">Изменять настройки может только администратор.</div>
+      )}
+
+      {isAdmin && apns && (
+        <>
+          <div className="section">
+            <div className="section-header">Уведомления на iPhone</div>
+            <div className="list">
+              <div className="cell">
+                <div className="cell-main">
+                  <div className="cell-title">{apns.configured ? "Ключи Apple заданы" : "Ключи Apple не заданы"}</div>
+                  <div className="cell-sub">
+                    {apns.source === "env"
+                      ? "Сейчас используются значения из .env на сервере"
+                      : apns.configured
+                        ? `Key ID ${apns.keyId} · Team ${apns.teamId}`
+                        : "Без ключа тестовое уведомление не отправится. Ключ остаётся только на сервере."}
+                  </div>
+                </div>
+              </div>
+              {apns.source !== "env" && (
+                <>
+                  <div className="field">
+                    <label>Key ID</label>
+                    <input
+                      value={apnsForm.keyId}
+                      onChange={(e) => setApnsForm({ ...apnsForm, keyId: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10) })}
+                      placeholder="ABC123DEFG"
+                      autoCapitalize="characters"
+                      autoCorrect="off"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Team ID</label>
+                    <input
+                      value={apnsForm.teamId}
+                      onChange={(e) => setApnsForm({ ...apnsForm, teamId: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10) })}
+                      placeholder="JVH92WZ78Z"
+                      autoCapitalize="characters"
+                      autoCorrect="off"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Bundle ID</label>
+                    <input
+                      value={apnsForm.bundleId}
+                      onChange={(e) => setApnsForm({ ...apnsForm, bundleId: e.target.value.trim() })}
+                      placeholder="ru.chebustore.app"
+                      autoCapitalize="off"
+                    />
+                  </div>
+                  <div className="field">
+                    <textarea
+                      value={apnsForm.key}
+                      onChange={(e) => setApnsForm({ ...apnsForm, key: e.target.value })}
+                      placeholder={apns.configured ? "Чтобы заменить ключ, вставьте новый .p8" : "Вставьте содержимое файла AuthKey_….p8 целиком"}
+                      style={{ minHeight: 120, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 }}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="section-footer">
+              developer.apple.com → Keys → ключ с галочкой Apple Push Notifications. Key ID на странице ключа, Team ID — в правом верхнем углу аккаунта. Файл .p8 скачивается один раз.
+            </div>
+          </div>
+          {apns.source !== "env" && (
+            <>
+              <button className="btn block" onClick={saveApns} disabled={saving !== null || !apnsForm.key.trim()}>
+                {saving === "apns" ? <Spinner /> : "Сохранить ключи Apple"}
+              </button>
+              {apns.configured && apns.source === "admin" && (
+                <button className="btn block gray mt-8" onClick={clearApns} disabled={saving !== null}>
+                  Удалить ключи
+                </button>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {isAdmin && imp && (
+        <>
+          <div className="section">
+            <div className="section-header">Импорт из канала</div>
+            <div className="list">
+              <label className="cell">
+                <div className="cell-main">
+                  <div className="cell-title">Добавлять товары из канала</div>
+                  <div className="cell-sub">{imp.enabled && imp.channelTitle ? imp.channelTitle : "Выключено"}</div>
+                </div>
+                <input type="checkbox" className="switch" checked={imp.enabled} onChange={(e) => i("enabled", e.target.checked)} />
+              </label>
+              <div className="field">
+                <label>Канал</label>
+                <input value={channel} onChange={(e) => setChannel(e.target.value.trim())} placeholder="@channel или -100…" autoCapitalize="off" />
+              </div>
+              <label className="cell">
+                <div className="cell-main">
+                  <div className="cell-title">Сразу публиковать</div>
+                  <div className="cell-sub">Иначе товар появится скрытым, и его нужно будет включить вручную</div>
+                </div>
+                <input type="checkbox" className="switch" checked={imp.publish} onChange={(e) => i("publish", e.target.checked)} />
+              </label>
+              <div className="field">
+                <label>Остаток</label>
+                <input
+                  value={imp.stock}
+                  inputMode="numeric"
+                  onChange={(e) => i("stock", Math.max(1, Number(e.target.value.replace(/\D/g, "")) || 1))}
+                />
+              </div>
+              <div className="field">
+                <label>Категория</label>
+                <select value={imp.categoryId} onChange={(e) => i("categoryId", e.target.value)}>
+                  <option value="">Угадывать по названию</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="section-footer">
+              Добавьте бота в администраторы канала. Из поста берутся название (первая строка), цена, размеры, состояние, описание и
+              все фото; строки вроде «Оформить 👉 @…» и хэштеги пропускаются. Правка поста обновляет товар, слово «продано» обнуляет
+              остаток. Старые посты перешлите боту в личку — он добавит их так же. Для закрытого канала перешлите боту любой пост: он
+              пришлёт ID канала.
+            </div>
+          </div>
+          <button className="btn block" onClick={saveImport} disabled={saving !== null}>
+            {saving === "import" ? <Spinner /> : "Сохранить импорт"}
+          </button>
+        </>
       )}
     </div>
   );

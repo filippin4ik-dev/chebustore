@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { apnsConfigured } from "../lib/apns.js";
+import { apnsConfigured, apnsProblem, explainApnsReason } from "../lib/apns.js";
 import { badRequest, forbidden } from "../lib/errors.js";
 import { parse } from "../lib/validate.js";
 import { requireStaff } from "../plugins/auth.js";
@@ -27,7 +27,7 @@ export default async function pushRoutes(app: FastifyInstance) {
       create: { token: body.token, environment, userId: user.id, sessionId: session.id },
       update: { environment, userId: user.id, sessionId: session.id },
     });
-    return { ok: true, configured: apnsConfigured() };
+    return { ok: true, configured: await apnsConfigured() };
   });
 
   app.post("/api/push/device/remove", limit, async (req) => {
@@ -39,12 +39,16 @@ export default async function pushRoutes(app: FastifyInstance) {
 
   app.post("/api/push/test", { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } }, async (req) => {
     const user = requireStaff(req);
-    if (!apnsConfigured()) throw badRequest("На сервере не настроены ключи Apple (APNS_*)", "push_not_configured");
-    const sent = await pushToDevices(
+    const problem = await apnsProblem();
+    if (problem) throw badRequest(problem, "push_not_configured");
+    const r = await pushToDevices(
       { userId: user.id, sessionId: req.auth!.session.id },
       { title: "CHEBU", body: "Уведомления работают" },
     );
-    if (!sent) throw badRequest("Не удалось доставить уведомление на это устройство", "push_failed");
+    if (!r.devices) {
+      throw badRequest("Сервер не знает этот iPhone. Разрешите уведомления для CHEBU в настройках iPhone и откройте приложение заново", "push_no_device");
+    }
+    if (!r.sent) throw badRequest(explainApnsReason(r.failures[0]), "push_failed");
     return { ok: true };
   });
 }

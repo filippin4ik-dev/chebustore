@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import { readFileSync } from "node:fs";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
@@ -400,5 +401,93 @@ ok(`audit log recorded ${audit.data.logs.length} actions`);
 const stats = await call("GET", "/api/admin/stats", { token: A });
 assert.equal(stats.data.revenue.day.sum, 1048000);
 ok("dashboard revenue correct");
+
+const stockBefore = (await call("GET", `/api/admin/products/${productId}`, { token: A })).data.product.variants.find((v) => v.id === L.id).stock;
+await call("PUT", "/api/cart/items", { token: C, body: { variantId: L.id, quantity: 1 } });
+const o3 = await call("POST", "/api/orders", {
+  token: C,
+  body: { contactName: "Иван Удаляев", contactPhone: "+7 (999) 555-44-33", deliveryMethod: "HAND" },
+});
+assert.equal(o3.status, 200, JSON.stringify(o3.data));
+const n3 = o3.data.order.number;
+const found3 = await call("GET", `/api/admin/orders?q=${encodeURIComponent("удаляев 5554433")}`, { token: A });
+assert.deepEqual(found3.data.orders.map((o) => o.number), [n3]);
+const byUser = await call("GET", `/api/admin/orders?user=${cust.data.user.id}`, { token: A });
+assert.ok(byUser.data.orders.length >= 2 && byUser.data.orders.every((o) => o.number !== undefined));
+const buyerSearch = await call("GET", `/api/admin/users?q=${encodeURIComponent("удаляев")}`, { token: A });
+assert.deepEqual(buyerSearch.data.users.map((u) => u.id), [cust.data.user.id]);
+const delDenied = await call("DELETE", `/api/admin/orders/${n3}`, { token: C });
+assert.equal(delDenied.status, 403);
+const del = await call("DELETE", `/api/admin/orders/${n3}`, { token: A });
+assert.equal(del.status, 200, JSON.stringify(del.data));
+assert.equal((await call("GET", `/api/admin/orders/${n3}`, { token: A })).status, 404);
+assert.equal((await call("GET", `/api/orders/${n3}`, { token: C })).status, 404);
+const stockAfter = (await call("GET", `/api/admin/products/${productId}`, { token: A })).data.product.variants.find((v) => v.id === L.id).stock;
+assert.equal(stockAfter, stockBefore);
+const audit2 = await call("GET", "/api/admin/audit", { token: A });
+assert.ok(audit2.data.logs.some((l) => l.action === "order.delete"));
+ok("orders: multi-word search, filter by customer, admin-only delete returns stock");
+
+const photoForm = new FormData();
+photoForm.append("file", new Blob([png], { type: "image/jpeg" }), "welcome.jpg");
+const photoUp = await call("POST", "/api/admin/settings/welcome-photo", { token: A, form: photoForm });
+assert.equal(photoUp.status, 200, JSON.stringify(photoUp.data));
+const photoName = photoUp.data.store.botWelcomePhoto;
+assert.match(photoName, /^[A-Za-z0-9_-]+\.jpg$/);
+const photoRes = await fetch(`${BASE}/media/bot/${photoName}`);
+assert.equal(photoRes.status, 200);
+assert.equal(photoRes.headers.get("content-type"), "image/jpeg");
+const custPhoto = await call("POST", "/api/admin/settings/welcome-photo", { token: C, form: new FormData() });
+assert.equal(custPhoto.status, 403);
+const storeNow = (await call("GET", "/api/admin/settings", { token: A })).data.store;
+assert.equal(storeNow.botStatusTexts.SHIPPED.length > 0, true);
+const texts = await call("PUT", "/api/admin/settings/store", {
+  token: A,
+  body: {
+    ...storeNow,
+    botWelcomePhoto: "../../etc/passwd",
+    botHelp: "Пишите @chebu_support",
+    botStatusTexts: { ...storeNow.botStatusTexts, SHIPPED: "Заказ №{номер} на {сумма} уже едет" },
+  },
+});
+assert.equal(texts.status, 200, JSON.stringify(texts.data));
+assert.equal(texts.data.store.botWelcomePhoto, photoName);
+assert.equal(texts.data.store.botStatusTexts.SHIPPED, "Заказ №{номер} на {сумма} уже едет");
+const photoDel = await call("DELETE", "/api/admin/settings/welcome-photo", { token: A });
+assert.equal(photoDel.data.store.botWelcomePhoto, "");
+assert.equal((await fetch(`${BASE}/media/bot/${photoName}`)).status, 404);
+ok("bot messages: welcome photo upload/delete admin-only, texts saved, photo name not client-controlled");
+
+const impNoChannel = await call("PUT", "/api/admin/settings/import", { token: A, body: { enabled: true, channel: "" } });
+assert.equal(impNoChannel.status, 400);
+const impBad = await call("PUT", "/api/admin/settings/import", { token: A, body: { enabled: true, channel: "t.me/+AbCdEf" } });
+assert.equal(impBad.status, 400);
+const impCust = await call("PUT", "/api/admin/settings/import", { token: C, body: { enabled: false } });
+assert.equal(impCust.status, 403);
+const impOff = await call("PUT", "/api/admin/settings/import", { token: A, body: { enabled: false, channel: "", stock: 2 } });
+assert.equal(impOff.status, 200, JSON.stringify(impOff.data));
+assert.equal((await call("GET", "/api/admin/settings", { token: A })).data.import.stock, 2);
+ok("channel import settings: validated, admin-only");
+
+const pem = generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+const apnsCust = await call("PUT", "/api/admin/settings/apns", { token: C, body: { keyId: "ABC123DEFG", teamId: "TEAM123456", key: pem } });
+assert.equal(apnsCust.status, 403);
+const apnsBad = await call("PUT", "/api/admin/settings/apns", { token: A, body: { keyId: "short", teamId: "TEAM123456", key: pem } });
+assert.equal(apnsBad.status, 400);
+const apnsOk = await call("PUT", "/api/admin/settings/apns", {
+  token: A,
+  body: { keyId: "abc123defg", teamId: "TEAM123456", bundleId: "ru.chebustore.app", key: pem },
+});
+assert.equal(apnsOk.status, 200, JSON.stringify(apnsOk.data));
+assert.equal(apnsOk.data.apns.configured, true);
+assert.equal(apnsOk.data.apns.keyId, "ABC123DEFG");
+assert.equal(JSON.stringify(apnsOk.data).includes("BEGIN PRIVATE"), false);
+assert.equal(JSON.stringify(apnsOk.data).includes("keySeal"), false);
+const settingsAfter = await call("GET", "/api/admin/settings", { token: A });
+assert.equal(settingsAfter.data.apns.configured, true);
+assert.equal(JSON.stringify(settingsAfter.data).includes("BEGIN PRIVATE"), false);
+const apnsGone = await call("DELETE", "/api/admin/settings/apns", { token: A });
+assert.equal(apnsGone.data.apns.configured, false);
+ok("apns keys: saved on server only, never returned, admin-only");
 
 console.log("\nВсе e2e-проверки пройдены");

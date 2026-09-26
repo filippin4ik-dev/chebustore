@@ -5,6 +5,7 @@ import { config } from "../config.js";
 import { prisma } from "../db.js";
 import { readReceipt } from "../lib/files.js";
 import { sendOrderUpdate } from "../lib/mailer.js";
+import { getStoreSettings } from "../lib/settings.js";
 import { STATUS_TEXT } from "./orders.js";
 import { pushStaff } from "./push.js";
 
@@ -27,7 +28,7 @@ async function safeSend(chatId: string | bigint, fn: (id: string) => Promise<unk
   }
 }
 
-async function staffChats(): Promise<string[]> {
+export async function staffChats(): Promise<string[]> {
   if (config.TELEGRAM_ADMIN_CHAT_ID) return [config.TELEGRAM_ADMIN_CHAT_ID];
   const staff = await prisma.user.findMany({
     where: { role: { in: ["ADMIN", "MANAGER"] }, isBlocked: false, telegramId: { not: null } },
@@ -44,6 +45,10 @@ export async function notifyStatus(order: Order, note = "") {
   const user = await prisma.user.findUnique({ where: { id: order.userId } });
   if (!user) return;
   const title = STATUS_TEXT[order.status];
+  const store = await getStoreSettings();
+  const message = store.botStatusTexts[order.status]
+    .replaceAll("{номер}", String(order.number))
+    .replaceAll("{сумма}", rub(order.total));
   const extra = [
     note,
     order.status === "SHIPPED" && order.trackingNumber ? `Трек-номер: ${order.trackingNumber}` : "",
@@ -58,14 +63,14 @@ export async function notifyStatus(order: Order, note = "") {
   if (user.telegramId) {
     const kb = new InlineKeyboard().webApp("Открыть заказ", `${config.PUBLIC_URL}/orders/${order.number}`);
     await safeSend(user.telegramId, (id) =>
-      bot.api.sendMessage(id, `<b>Заказ №${order.number}</b>\n${esc(title)}${extra ? `\n\n${esc(extra)}` : ""}`, {
+      bot.api.sendMessage(id, `<b>Заказ №${order.number}</b>\n${esc(message)}${extra ? `\n\n${esc(extra)}` : ""}`, {
         parse_mode: "HTML",
         reply_markup: kb,
       }),
     );
   }
   if (user.email && user.emailVerifiedAt) {
-    await sendOrderUpdate(user.email, order.number, title, extra).catch((e) =>
+    await sendOrderUpdate(user.email, order.number, title, [message, extra].filter(Boolean).join("\n\n")).catch((e) =>
       console.warn(`order email failed: ${(e as Error).message}`),
     );
   }
