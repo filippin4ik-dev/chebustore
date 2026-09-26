@@ -24,7 +24,3 @@ export function numericCode(digits = 6): string {
     .toString()
     .padStart(digits, "0");
 }
-
-export function pkceChallenge(verifier: string): string {
-  return createHash("sha256").update(verifier).digest("base64url");
-}

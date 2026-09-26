@@ -1,40 +1,82 @@
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { BANKS, bankIds } from "./banks.js";
+
+export const DELIVERY_METHODS = ["CDEK", "RUSSIAN_POST", "HAND"] as const;
+export type DeliveryMethodKey = (typeof DELIVERY_METHODS)[number];
+
+const LEGACY_DELIVERY: Record<string, DeliveryMethodKey> = { PICKUP: "HAND", COURIER: "CDEK", POST: "RUSSIAN_POST" };
+
+function renameLegacyKeys(v: unknown) {
+  if (!v || typeof v !== "object") return v;
+  const out: Record<string, unknown> = { ...(v as Record<string, unknown>) };
+  for (const [from, to] of Object.entries(LEGACY_DELIVERY)) {
+    if (from in out) {
+      if (!(to in out)) out[to] = out[from];
+      delete out[from];
+    }
+  }
+  return out;
+}
+
+function toBankId(v: unknown) {
+  if (typeof v !== "string") return v;
+  const s = v.trim();
+  if (!s || bankIds.includes(s)) return s;
+  const low = s.toLowerCase();
+  const found = BANKS.find((b) => b.name.toLowerCase() === low || low.includes(b.name.toLowerCase()));
+  return found ? found.id : "other";
+}
+
+const bankField = z.preprocess(toBankId, z.union([z.literal(""), z.enum(bankIds as [string, ...string[]])]).default(""));
+const hexColor = z
+  .string()
+  .trim()
+  .regex(/^#[0-9a-fA-F]{6}$/, "Цвет в формате #RRGGBB");
 
 export const paymentSettingsSchema = z.object({
   sbpPhone: z.string().trim().max(32).default(""),
-  sbpBank: z.string().trim().max(64).default(""),
+  sbpBank: bankField,
   cardNumber: z
     .string()
     .trim()
     .max(32)
     .regex(/^[\d ]*$/, "Номер карты — только цифры")
     .default(""),
-  cardBank: z.string().trim().max(64).default(""),
+  cardBank: bankField,
   recipientName: z.string().trim().max(96).default(""),
   instructions: z.string().trim().max(1000).default(""),
   paymentWindowHours: z.coerce.number().int().min(1).max(168).default(24),
 });
+
+const price = z.coerce.number().int().min(0).max(10_000_000).default(0);
+
+export const DEFAULT_WELCOME =
+  "Привет! Это CHEBU.\n\nКаталог, корзина и статусы заказов — внутри приложения. Нажмите кнопку ниже, чтобы открыть магазин.";
 
 export const storeSettingsSchema = z.object({
   storeName: z.string().trim().min(1).max(64).default("CHEBU"),
   supportTelegram: z.string().trim().max(64).default(""),
   supportEmail: z.string().trim().max(128).default(""),
   pickupAddress: z.string().trim().max(300).default(""),
-  deliveryPrices: z
-    .object({
-      PICKUP: z.coerce.number().int().min(0).default(0),
-      COURIER: z.coerce.number().int().min(0).default(0),
-      POST: z.coerce.number().int().min(0).default(0),
-    })
-    .default({}),
-  deliveryEnabled: z
-    .object({
-      PICKUP: z.boolean().default(true),
-      COURIER: z.boolean().default(true),
-      POST: z.boolean().default(true),
-    })
-    .default({}),
+  deliveryPrices: z.preprocess(
+    renameLegacyKeys,
+    z.object({ CDEK: price, RUSSIAN_POST: price, HAND: price }).default({}),
+  ),
+  deliveryEnabled: z.preprocess(
+    renameLegacyKeys,
+    z
+      .object({
+        CDEK: z.boolean().default(true),
+        RUSSIAN_POST: z.boolean().default(true),
+        HAND: z.boolean().default(true),
+      })
+      .default({}),
+  ),
+  accentLight: hexColor.default("#000000"),
+  accentDark: hexColor.default("#FFFFFF"),
+  botWelcome: z.string().trim().min(1).max(3000).default(DEFAULT_WELCOME),
+  botButton: z.string().trim().min(1).max(32).default("Открыть магазин"),
 });
 
 export type PaymentSettings = z.infer<typeof paymentSettingsSchema>;
@@ -43,7 +85,15 @@ export type StoreSettings = z.infer<typeof storeSettingsSchema>;
 async function read<T>(key: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>): Promise<T> {
   const row = await prisma.setting.findUnique({ where: { key } });
   const parsed = schema.safeParse(row?.value ?? {});
-  return parsed.success ? parsed.data : schema.parse({});
+  if (parsed.success) return parsed.data;
+  const raw = (row?.value ?? {}) as Record<string, unknown>;
+  const partial: Record<string, unknown> = {};
+  const defaults = schema.parse({}) as Record<string, unknown>;
+  for (const k of Object.keys(defaults)) {
+    const one = schema.safeParse({ ...defaults, [k]: raw[k] });
+    partial[k] = one.success ? (one.data as Record<string, unknown>)[k] : defaults[k];
+  }
+  return partial as T;
 }
 
 export const getPaymentSettings = () => read("payment", paymentSettingsSchema);
@@ -58,5 +108,5 @@ export async function saveStoreSettings(value: StoreSettings) {
 }
 
 export function paymentIsConfigured(p: PaymentSettings) {
-  return Boolean((p.sbpPhone || p.cardNumber) && p.recipientName);
+  return Boolean(p.sbpPhone || p.cardNumber);
 }

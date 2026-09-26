@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { EmailCodeForm } from "../components/EmailCodeForm";
 import { Icon } from "../components/Icon";
-import { TelegramLogin, type TelegramAuthData } from "../components/TelegramLogin";
+import { TelegramLogin } from "../components/TelegramLogin";
 import { Empty, NavBar, Sheet, useAsync } from "../components/ui";
 import { api, ApiError } from "../lib/api";
 import { isStaff, useAuth } from "../lib/auth";
@@ -37,15 +37,10 @@ export default function Profile() {
     );
   }
 
-  const linkTelegram = async (data: TelegramAuthData) => {
-    try {
-      const r = await api.post<{ user: User }>("/account/link/telegram", { data });
-      setUser(r.user);
-      setTgOpen(false);
-      toast("Telegram привязан");
-    } catch (e) {
-      toast(e instanceof ApiError ? e.message : "Ошибка", true);
-    }
+  const linkTelegram = (u: User) => {
+    setUser(u);
+    setTgOpen(false);
+    toast("Telegram привязан");
   };
 
   const unlinkTelegram = async () => {
@@ -201,7 +196,7 @@ export default function Profile() {
       </Sheet>
 
       <Sheet open={tgOpen} onClose={() => setTgOpen(false)} title="Привязать Telegram">
-        {config?.botUsername && <TelegramLogin botUsername={config.botUsername} onAuth={linkTelegram} />}
+        {tgOpen && <TelegramLogin link onDone={linkTelegram} />}
       </Sheet>
 
       <DevicesSheet open={devicesOpen} onClose={() => setDevicesOpen(false)} />

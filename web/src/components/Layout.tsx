@@ -33,7 +33,9 @@ export function StoreLayout() {
           </nav>
         </div>
       </div>
-      <Outlet />
+      <div key={pathname.split("/")[1] ?? ""} className="route-enter">
+        <Outlet />
+      </div>
       {!hideTabbar && (
         <nav className="tabbar">
           <div className="tabbar-inner">
@@ -41,7 +43,11 @@ export function StoreLayout() {
               <NavLink key={t.to} to={t.to} end={t.end} className={({ isActive }) => `tab ${isActive ? "active" : ""}`}>
                 <Icon name={t.icon} size={26} stroke={1.6} />
                 {t.label}
-                {t.badge ? <span className="tab-badge">{t.badge > 99 ? "99+" : t.badge}</span> : null}
+                {t.badge ? (
+                  <span key={t.badge} className="tab-badge">
+                    {t.badge > 99 ? "99+" : t.badge}
+                  </span>
+                ) : null}
               </NavLink>
             ))}
           </div>

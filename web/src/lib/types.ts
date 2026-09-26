@@ -9,7 +9,15 @@ export type OrderStatus =
   | "COMPLETED"
   | "CANCELLED";
 
-export type DeliveryMethod = "PICKUP" | "COURIER" | "POST";
+export type DeliveryMethod = "CDEK" | "RUSSIAN_POST" | "HAND";
+
+export interface Bank {
+  id: string;
+  name: string;
+  short: string;
+  bg: string;
+  fg: string;
+}
 
 export interface User {
   id: string;
@@ -32,6 +40,9 @@ export interface PublicConfig {
   supportEmail: string;
   pickupAddress: string;
   delivery: { method: DeliveryMethod; price: number }[];
+  theme: { accentLight: string; accentDark: string };
+  addressSuggest: boolean;
+  banks: Bank[];
 }
 
 export interface Category {
@@ -194,4 +205,8 @@ export interface StoreSettings {
   pickupAddress: string;
   deliveryPrices: Record<DeliveryMethod, number>;
   deliveryEnabled: Record<DeliveryMethod, boolean>;
+  accentLight: string;
+  accentDark: string;
+  botWelcome: string;
+  botButton: string;
 }

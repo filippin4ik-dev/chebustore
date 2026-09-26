@@ -116,14 +116,17 @@ struct CopyRow: View {
 struct PrimaryButtonStyle: ButtonStyle {
     var role: ButtonRole?
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(AuthStore.self) private var auth
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.body.weight(.semibold))
             .frame(maxWidth: .infinity, minHeight: 50)
-            .foregroundStyle(Color(.systemBackground))
-            .background(Color.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .opacity(!isEnabled ? 0.35 : configuration.isPressed ? 0.7 : 1)
+            .foregroundStyle(Color.onAccent(auth.config?.theme))
+            .background(Color.accent(auth.config?.theme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .opacity(!isEnabled ? 0.35 : configuration.isPressed ? 0.85 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 

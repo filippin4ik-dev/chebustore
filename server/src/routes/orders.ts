@@ -5,7 +5,7 @@ import { config } from "../config.js";
 import { prisma } from "../db.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { readReceipt, saveReceipt } from "../lib/files.js";
-import { getPaymentSettings, getStoreSettings, paymentIsConfigured } from "../lib/settings.js";
+import { DELIVERY_METHODS, getPaymentSettings, getStoreSettings, paymentIsConfigured } from "../lib/settings.js";
 import { parse } from "../lib/validate.js";
 import { requireUser } from "../plugins/auth.js";
 import { notifyNewOrder, notifyReceipt, notifyStatus } from "../services/notify.js";
@@ -22,25 +22,25 @@ const checkoutSchema = z
       .string()
       .trim()
       .regex(/^\+?[\d\s()-]{10,20}$/, "Укажите телефон"),
-    deliveryMethod: z.enum(["PICKUP", "COURIER", "POST"]),
+    deliveryMethod: z.enum(DELIVERY_METHODS),
     deliveryAddress: z.string().trim().max(400).default(""),
     comment: z.string().trim().max(500).default(""),
   })
-  .refine((d) => d.deliveryMethod === "PICKUP" || d.deliveryAddress.length >= 5, {
+  .refine((d) => d.deliveryMethod === "HAND" || d.deliveryAddress.length >= 5, {
     message: "Укажите адрес доставки",
     path: ["deliveryAddress"],
   });
 
 export async function sendReceiptFile(reply: FastifyReply, receipt: PaymentReceipt) {
   const buf = await readReceipt(receipt.fileName);
+  const ext = receipt.fileName.split(".").pop();
+  const inline = receipt.mimeType === "image/webp";
   return reply
     .header("Content-Type", receipt.mimeType)
-    .header(
-      "Content-Disposition",
-      `${receipt.mimeType === "application/pdf" ? "attachment" : "inline"}; filename="receipt-${receipt.id}${receipt.mimeType === "application/pdf" ? ".pdf" : ".webp"}"`,
-    )
+    .header("Content-Disposition", `${inline ? "inline" : "attachment"}; filename="receipt-${receipt.id}.${ext}"`)
     .header("Cache-Control", "private, no-store")
     .header("Content-Security-Policy", "default-src 'none'; sandbox")
+    .header("X-Content-Type-Options", "nosniff")
     .send(buf);
 }
 
@@ -109,7 +109,7 @@ export default async function orderRoutes(app: FastifyInstance) {
           contactName: body.contactName,
           contactPhone: body.contactPhone,
           deliveryMethod: body.deliveryMethod,
-          deliveryAddress: body.deliveryMethod === "PICKUP" ? store.pickupAddress : body.deliveryAddress,
+          deliveryAddress: body.deliveryMethod === "HAND" ? body.deliveryAddress || store.pickupAddress : body.deliveryAddress,
           customerComment: body.comment,
           paymentSnapshot: {
             sbpPhone: payment.sbpPhone,

@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 export interface TelegramIdentity {
   id: bigint;
@@ -19,41 +19,6 @@ function checkAge(authDate: number, maxAgeSec: number, now: number) {
   if (!Number.isFinite(authDate) || authDate <= 0) return false;
   const age = now - authDate;
   return age <= maxAgeSec && age >= -60;
-}
-
-export function verifyLoginWidget(
-  data: Record<string, unknown>,
-  botToken: string,
-  maxAgeSec: number,
-  now = Math.floor(Date.now() / 1000),
-): TelegramIdentity | null {
-  const hash = typeof data.hash === "string" ? data.hash : "";
-  const allowed = ["id", "first_name", "last_name", "username", "photo_url", "auth_date"];
-  const pairs: string[] = [];
-  for (const key of allowed.sort()) {
-    const v = data[key];
-    if (v === undefined || v === null || v === "") continue;
-    if (typeof v !== "string" && typeof v !== "number") return null;
-    pairs.push(`${key}=${v}`);
-  }
-  const secret = createHash("sha256").update(botToken).digest();
-  const expected = createHmac("sha256", secret).update(pairs.join("\n")).digest("hex");
-  if (!hexEqual(expected, hash)) return null;
-
-  const authDate = Number(data.auth_date);
-  if (!checkAge(authDate, maxAgeSec, now)) return null;
-  const idStr = String(data.id ?? "");
-  if (!/^\d{1,20}$/.test(idStr)) return null;
-
-  return {
-    id: BigInt(idStr),
-    username: typeof data.username === "string" ? data.username : undefined,
-    firstName: typeof data.first_name === "string" ? data.first_name : undefined,
-    lastName: typeof data.last_name === "string" ? data.last_name : undefined,
-    photoUrl: typeof data.photo_url === "string" ? data.photo_url : undefined,
-    authDate,
-    hash,
-  };
 }
 
 export function verifyWebAppInitData(

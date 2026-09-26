@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import sharp from "sharp";
+import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://127.0.0.1:4000";
 const ORIGIN = "http://localhost:5173";
@@ -98,10 +99,11 @@ ok("non-image disguised as png rejected");
 
 const pay = await call("PUT", "/api/admin/settings/payment", {
   token: A,
-  body: { sbpPhone: "+7 900 123-45-67", sbpBank: "Т-Банк", cardNumber: "2200 1234 5678 9012", cardBank: "Сбер", recipientName: "Иван И.", instructions: "", paymentWindowHours: 24 },
+  body: { sbpPhone: "+7 900 123-45-67", sbpBank: "tbank", cardNumber: "2200 1234 5678 9012", cardBank: "Сбербанк", recipientName: "Иван И.", instructions: "", paymentWindowHours: 24 },
 });
 assert.equal(pay.status, 200, JSON.stringify(pay.data));
-ok("admin sets payment details");
+assert.equal(pay.data.payment.cardBank, "sber");
+ok("admin sets payment details, legacy bank names mapped to bank list");
 
 const list = await call("GET", "/api/products?category=hoodies");
 assert.equal(list.data.products.length, 1);
@@ -148,7 +150,7 @@ ok("cart respects stock, server computes totals");
 
 const order = await call("POST", "/api/orders", {
   token: C,
-  body: { contactName: "Покупатель Тест", contactPhone: "+7 999 111-22-33", deliveryMethod: "COURIER", deliveryAddress: "Москва, ул. Тестовая, 1" },
+  body: { contactName: "Покупатель Тест", contactPhone: "+7 999 111-22-33", deliveryMethod: "CDEK", deliveryAddress: "Москва, ул. Тестовая, 1" },
 });
 assert.equal(order.status, 200, JSON.stringify(order.data));
 const O = order.data.order;
@@ -213,7 +215,7 @@ ok("status flow: собирается → в доставке → можно з�
 
 const L = pub.variants.find((v) => v.size === "L");
 await call("PUT", "/api/cart/items", { token: C, body: { variantId: L.id, quantity: 1 } });
-const o2 = await call("POST", "/api/orders", { token: C, body: { contactName: "Покупатель", contactPhone: "+79991112233", deliveryMethod: "PICKUP" } });
+const o2 = await call("POST", "/api/orders", { token: C, body: { contactName: "Покупатель", contactPhone: "+79991112233", deliveryMethod: "HAND" } });
 assert.equal(o2.data.order.total, 519000);
 const c2 = await call("POST", `/api/orders/${o2.data.order.number}/cancel`, { token: C });
 assert.equal(c2.data.order.status, "CANCELLED");
@@ -265,6 +267,35 @@ assert.equal(blocked.status, 401);
 const selfDemote = await call("PATCH", `/api/admin/users/${admin.data.user.id}`, { token: A, body: { role: "CUSTOMER" } });
 assert.equal(selfDemote.status, 400);
 ok("blocking user revokes sessions; admin cannot demote self");
+
+const prisma = new PrismaClient();
+const tgStart = await call("POST", "/api/auth/telegram/bot/start", { body: { client: "WEB" } });
+assert.equal(tgStart.status, 200, JSON.stringify(tgStart.data));
+assert.match(tgStart.data.url, /^https:\/\/t\.me\/.+\?start=login_[A-Za-z0-9_-]{22}$/);
+const pending = await call("POST", "/api/auth/telegram/bot/poll", { body: { id: tgStart.data.id, secret: tgStart.data.secret } });
+assert.equal(pending.data.status, "pending");
+const wrongSecret = await call("POST", "/api/auth/telegram/bot/poll", { body: { id: tgStart.data.id, secret: "x".repeat(43) } });
+assert.equal(wrongSecret.status, 400);
+await prisma.telegramLogin.update({
+  where: { publicId: tgStart.data.id },
+  data: { status: "CONFIRMED", telegramId: 777000111n, tgUsername: "tgbuyer", tgFirstName: "Тест" },
+});
+const tgDone = await call("POST", "/api/auth/telegram/bot/poll", { body: { id: tgStart.data.id, secret: tgStart.data.secret } });
+assert.equal(tgDone.data.status, "ok", JSON.stringify(tgDone.data));
+assert.equal(tgDone.data.user.telegramUsername, "tgbuyer");
+assert.equal(tgDone.data.token, undefined);
+assert.match(tgDone.headers.get("set-cookie") ?? "", /HttpOnly/i);
+const tgReplay = await call("POST", "/api/auth/telegram/bot/poll", { body: { id: tgStart.data.id, secret: tgStart.data.secret } });
+assert.equal(tgReplay.status, 400);
+ok("telegram bot login: secret-bound, one-time, httpOnly cookie");
+
+const tgIos = await call("POST", "/api/auth/telegram/bot/start", { body: { client: "IOS" } });
+await prisma.telegramLogin.update({ where: { publicId: tgIos.data.id }, data: { status: "CONFIRMED", telegramId: 777000111n } });
+const tgIosDenied = await call("POST", "/api/auth/telegram/bot/poll", { body: { id: tgIos.data.id, secret: tgIos.data.secret } });
+assert.equal(tgIosDenied.status, 403);
+assert.equal(tgIosDenied.data.error.code, "staff_only");
+ok("telegram bot login into iOS admin app refused for customers");
+await prisma.$disconnect();
 
 const audit = await call("GET", "/api/admin/audit", { token: A });
 assert.ok(audit.data.logs.some((l) => l.action === "payment.approve"));

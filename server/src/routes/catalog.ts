@@ -4,7 +4,8 @@ import { z } from "zod";
 import { config } from "../config.js";
 import { prisma } from "../db.js";
 import { notFound } from "../lib/errors.js";
-import { getStoreSettings } from "../lib/settings.js";
+import { BANKS } from "../lib/banks.js";
+import { DELIVERY_METHODS, getStoreSettings } from "../lib/settings.js";
 import { parse } from "../lib/validate.js";
 import { productInclude, serializeProduct } from "../services/catalog.js";
 
@@ -17,9 +18,13 @@ export default async function catalogRoutes(app: FastifyInstance) {
       supportTelegram: store.supportTelegram,
       supportEmail: store.supportEmail,
       pickupAddress: store.pickupAddress,
-      delivery: (["PICKUP", "COURIER", "POST"] as const)
-        .filter((m) => store.deliveryEnabled[m])
-        .map((m) => ({ method: m, price: store.deliveryPrices[m] })),
+      delivery: DELIVERY_METHODS.filter((m) => store.deliveryEnabled[m]).map((m) => ({
+        method: m,
+        price: store.deliveryPrices[m],
+      })),
+      theme: { accentLight: store.accentLight, accentDark: store.accentDark },
+      addressSuggest: Boolean(config.DADATA_API_KEY),
+      banks: BANKS,
     };
   });
 

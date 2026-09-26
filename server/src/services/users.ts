@@ -22,17 +22,19 @@ function assertActive(user: User) {
   if (user.isBlocked) throw forbidden("Аккаунт заблокирован. Напишите в поддержку.", "blocked");
 }
 
-export async function upsertTelegramUser(tg: TelegramIdentity): Promise<User> {
+export async function upsertTelegramUser(
+  tg: Pick<TelegramIdentity, "id" | "username" | "firstName" | "lastName" | "photoUrl">,
+): Promise<User> {
+  const photoUrl = tg.photoUrl?.startsWith("https://") ? tg.photoUrl : undefined;
   const profile = {
     telegramUsername: tg.username ?? null,
     firstName: tg.firstName ?? null,
     lastName: tg.lastName ?? null,
-    photoUrl: tg.photoUrl?.startsWith("https://") ? tg.photoUrl : null,
   };
   const user = await prisma.user.upsert({
     where: { telegramId: tg.id },
-    create: { telegramId: tg.id, ...profile },
-    update: profile,
+    create: { telegramId: tg.id, ...profile, photoUrl: photoUrl ?? null },
+    update: photoUrl ? { ...profile, photoUrl } : profile,
   });
   assertActive(user);
   return applyBootstrap(user);

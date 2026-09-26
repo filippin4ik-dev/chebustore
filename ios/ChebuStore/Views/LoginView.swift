@@ -9,6 +9,7 @@ struct LoginView: View {
     @State private var error: String?
     @State private var resendIn = 0
     @FocusState private var codeFocused: Bool
+    @State private var telegramLogin: TelegramLoginStart?
 
     enum Step { case start, code }
 
@@ -24,7 +25,25 @@ struct LoginView: View {
                     }
                     .padding(.top, 24)
 
-                    if step == .start {
+                    if let telegramLogin {
+                        VStack(spacing: 12) {
+                            ZStack {
+                                Circle().fill(Color(red: 0.16, green: 0.67, blue: 0.93).opacity(0.14)).frame(width: 72, height: 72)
+                                Image(systemName: "paperplane.fill").font(.title).foregroundStyle(Color(red: 0.16, green: 0.67, blue: 0.93))
+                            }
+                            Text("Подтвердите вход в Telegram").font(.headline)
+                            Text("Бот прислал сообщение — нажмите в нём «Подтвердить вход» и вернитесь в приложение.")
+                                .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                            ProgressView().padding(.vertical, 4)
+                            Button("Открыть Telegram ещё раз") { auth.openTelegram(telegramLogin) }
+                                .buttonStyle(.bordered)
+                            Button("Отмена", role: .cancel) { self.telegramLogin = nil }
+                        }
+                        .padding(20)
+                        .frame(maxWidth: .infinity)
+                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .task(id: telegramLogin.id) { await pollTelegram(telegramLogin) }
+                    } else if step == .start {
                         Button {
                             Task { await telegram() }
                         } label: {
@@ -98,12 +117,29 @@ struct LoginView: View {
         busy = true
         defer { busy = false }
         do {
-            try await auth.loginWithTelegram()
-        } catch let e as APIError where e.code == "cancelled" {
+            telegramLogin = try await auth.startTelegramLogin()
         } catch {
-            if (error as NSError).domain == "com.apple.AuthenticationServices.WebAuthenticationSession" { return }
             self.error = error.localizedDescription
         }
+    }
+
+    private func pollTelegram(_ start: TelegramLoginStart) async {
+        let deadline = Date().addingTimeInterval(10 * 60)
+        while !Task.isCancelled, Date() < deadline {
+            do {
+                if try await auth.pollTelegram(start) { return }
+            } catch let e as APIError where e.status == 429 || e.status >= 500 || e.status == 0 {
+            } catch is URLError {
+            } catch {
+                if telegramLogin == start {
+                    telegramLogin = nil
+                    self.error = error.localizedDescription
+                }
+                return
+            }
+            try? await Task.sleep(for: .seconds(1.5))
+        }
+        if telegramLogin == start { telegramLogin = nil }
     }
 
     private func requestCode() async {

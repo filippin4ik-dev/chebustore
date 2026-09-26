@@ -8,7 +8,7 @@ struct ChebuStoreApp: App {
         WindowGroup {
             RootView()
                 .environment(auth)
-                .tint(.primary)
+                .tint(Color.accent(auth.config?.theme))
                 .task { await auth.bootstrap() }
         }
     }

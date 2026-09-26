@@ -28,8 +28,7 @@ async function cleanup() {
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   await Promise.all([
     prisma.emailCode.deleteMany({ where: { createdAt: { lt: weekAgo } } }),
-    prisma.appAuthCode.deleteMany({ where: { expiresAt: { lt: now } } }),
-    prisma.usedTelegramAuth.deleteMany({ where: { expiresAt: { lt: now } } }),
+    prisma.telegramLogin.deleteMany({ where: { expiresAt: { lt: new Date(now.getTime() - 60 * 60 * 1000) } } }),
     prisma.session.deleteMany({ where: { OR: [{ expiresAt: { lt: weekAgo } }, { revokedAt: { lt: weekAgo } }] } }),
   ]);
 }

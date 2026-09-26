@@ -124,7 +124,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   );
 }
 
-export function CopyValue({ label, value, display }: { label: string; value: string; display?: string }) {
+export function CopyValue({ label, value, display }: { label: ReactNode; value: string; display?: string }) {
   const toast = useToast();
   return (
     <div className="cell">
@@ -150,6 +150,7 @@ export function CopyValue({ label, value, display }: { label: string; value: str
 export function AuthImage({ path, alt, className }: { path: string; alt: string; className?: string }) {
   const [src, setSrc] = useState<{ url: string; type: string } | null>(null);
   const [failed, setFailed] = useState(false);
+  const [broken, setBroken] = useState(false);
   useEffect(() => {
     let url: string | null = null;
     api
@@ -165,16 +166,17 @@ export function AuthImage({ path, alt, className }: { path: string; alt: string;
   }, [path]);
   if (failed) return <div className="footnote">Файл недоступен</div>;
   if (!src) return <Spinner />;
-  if (src.type === "application/pdf") {
+  if (src.type === "application/pdf" || (src.type === "image/heic" && broken)) {
+    const pdf = src.type === "application/pdf";
     return (
-      <a className="btn small gray" href={src.url} download={`${alt}.pdf`}>
-        <Icon name="doc" size={18} /> Скачать PDF
+      <a className="btn small gray" href={src.url} download={`${alt}.${pdf ? "pdf" : "heic"}`}>
+        <Icon name="doc" size={18} /> {pdf ? "Скачать PDF" : "Скачать фото (HEIC)"}
       </a>
     );
   }
   return (
     <a href={src.url} target="_blank" rel="noreferrer">
-      <img src={src.url} alt={alt} className={className} />
+      <img src={src.url} alt={alt} className={className} onError={() => setBroken(true)} />
     </a>
   );
 }

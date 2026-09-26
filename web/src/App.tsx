@@ -4,7 +4,6 @@ import { StoreLayout } from "./components/Layout";
 import { PageLoader } from "./components/ui";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { ToastProvider } from "./lib/toast";
-import AppAuth from "./pages/AppAuth";
 import CartPage from "./pages/CartPage";
 import Catalog from "./pages/Catalog";
 import Checkout from "./pages/Checkout";
@@ -31,7 +30,6 @@ function Shell() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
-        <Route path="/auth/app" element={<AppAuth />} />
         <Route element={<StoreLayout />}>
           <Route index element={<Catalog />} />
           <Route path="p/:slug" element={<ProductPage />} />

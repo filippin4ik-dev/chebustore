@@ -102,17 +102,22 @@ struct AdminSettingsView: View {
     @State private var saved = false
 
     private var isAdmin: Bool { auth.user?.role == .ADMIN }
+    private var banks: [Bank] { auth.config?.banks ?? [] }
 
     var body: some View {
         Form {
-            if isAdmin, payment != nil {
+            if isAdmin, let p = payment {
                 Section {
+                    if p.sbpPhone.trimmingCharacters(in: .whitespaces).isEmpty && p.cardNumber.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Label("Реквизиты не заполнены — покупатели не смогут оформить заказ.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.subheadline).foregroundStyle(.orange)
+                    }
                     TextField("СБП: телефон", text: bindPayment(\.sbpPhone)).keyboardType(.phonePad)
-                    TextField("Банк для СБП", text: bindPayment(\.sbpBank))
+                    BankPickerRow(title: "Банк СБП", banks: banks, selection: bindPayment(\.sbpBank))
                     TextField("Номер карты", text: bindPayment(\.cardNumber)).keyboardType(.numberPad)
-                    TextField("Банк карты", text: bindPayment(\.cardBank))
+                    BankPickerRow(title: "Банк карты", banks: banks, selection: bindPayment(\.cardBank))
                     TextField("Получатель", text: bindPayment(\.recipientName))
-                    Stepper("Срок оплаты: \(payment?.paymentWindowHours ?? 24) ч", value: Binding(
+                    Stepper("Срок оплаты: \(p.paymentWindowHours) ч", value: Binding(
                         get: { payment?.paymentWindowHours ?? 24 },
                         set: { payment?.paymentWindowHours = $0 }
                     ), in: 1...168)
@@ -130,25 +135,85 @@ struct AdminSettingsView: View {
                     TextField("Название", text: bindStore(\.storeName))
                     TextField("Поддержка в Telegram (@username)", text: bindStore(\.supportTelegram))
                     TextField("Почта поддержки", text: bindStore(\.supportEmail)).keyboardType(.emailAddress).textInputAutocapitalization(.never)
-                    TextField("Адрес самовывоза", text: bindStore(\.pickupAddress), axis: .vertical).lineLimit(2...4)
                 }
                 .disabled(!isAdmin)
 
-                Section("Доставка") {
+                Section {
                     ForEach(DeliveryMethod.allCases) { m in
-                        HStack {
-                            Toggle(m.title, isOn: Binding(
+                        HStack(spacing: 12) {
+                            Image(systemName: m.icon).frame(width: 24).foregroundStyle(.secondary)
+                            Text(m.title)
+                            Spacer()
+                            TextField("0", text: Binding(
+                                get: { prices[m.rawValue] ?? "" },
+                                set: { prices[m.rawValue] = $0 }
+                            ))
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 70)
+                            .padding(.vertical, 6).padding(.horizontal, 8)
+                            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .disabled(!(store.deliveryEnabled[m.rawValue] ?? true))
+                            Text("₽").foregroundStyle(.secondary)
+                            Toggle("", isOn: Binding(
                                 get: { store.deliveryEnabled[m.rawValue] ?? true },
                                 set: { self.store?.deliveryEnabled[m.rawValue] = $0 }
                             ))
+                            .labelsHidden()
                         }
-                        TextField("Цена «\(m.title)», ₽", text: Binding(
-                            get: { prices[m.rawValue] ?? "" },
-                            set: { prices[m.rawValue] = $0 }
-                        ))
-                        .keyboardType(.decimalPad)
-                        .foregroundStyle(.secondary)
                     }
+                    TextField("Где и когда передаёте лично", text: bindStore(\.pickupAddress), axis: .vertical).lineLimit(2...4)
+                } header: {
+                    Text("Доставка")
+                } footer: {
+                    Text("Цена 0 — бесплатно. Выключенный способ не показывается покупателям.")
+                }
+                .disabled(!isAdmin)
+
+                Section {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 14) {
+                            ForEach(ThemePreset.all) { t in
+                                let active = t.light.caseInsensitiveCompare(store.accentLight) == .orderedSame
+                                    && t.dark.caseInsensitiveCompare(store.accentDark) == .orderedSame
+                                Button {
+                                    self.store?.accentLight = t.light
+                                    self.store?.accentDark = t.dark
+                                } label: {
+                                    VStack(spacing: 6) {
+                                        HStack(spacing: 0) {
+                                            Color(hex: t.light).frame(width: 18)
+                                            Color(hex: t.dark).frame(width: 18)
+                                        }
+                                        .frame(width: 36, height: 36)
+                                        .clipShape(Circle())
+                                        .overlay(Circle().strokeBorder(Color(.separator), lineWidth: 0.5))
+                                        .padding(3)
+                                        .overlay(Circle().strokeBorder(active ? Color.primary : .clear, lineWidth: 2))
+                                        Text(t.name).font(.caption2).foregroundStyle(.secondary)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    ColorPicker("Светлая тема", selection: colorBinding(\.accentLight), supportsOpacity: false)
+                    ColorPicker("Тёмная тема", selection: colorBinding(\.accentDark), supportsOpacity: false)
+                } header: {
+                    Text("Оформление")
+                } footer: {
+                    Text("Цвет кнопок и акцентов на сайте, в Telegram и в этом приложении.")
+                }
+                .disabled(!isAdmin)
+
+                Section {
+                    TextField("Текст приветствия", text: bindStore(\.botWelcome), axis: .vertical).lineLimit(4...12)
+                    TextField("Текст кнопки", text: bindStore(\.botButton))
+                } header: {
+                    Text("Приветствие бота")
+                } footer: {
+                    Text("Бот отправляет это сообщение на /start. Кнопка открывает магазин.")
                 }
                 .disabled(!isAdmin)
 
@@ -175,12 +240,20 @@ struct AdminSettingsView: View {
         Binding(get: { store?[keyPath: kp] ?? "" }, set: { store?[keyPath: kp] = $0 })
     }
 
+    private func colorBinding(_ kp: WritableKeyPath<StoreSettings, String>) -> Binding<Color> {
+        Binding(
+            get: { Color(hex: store?[keyPath: kp] ?? "#000000") },
+            set: { store?[keyPath: kp] = $0.hexString }
+        )
+    }
+
     private func load() async {
         do {
             let r: SettingsEnvelope = try await APIClient.shared.get("/admin/settings")
             store = r.store
             payment = r.payment
             prices = r.store.deliveryPrices.mapValues { Format.rubles($0) }
+            if auth.config == nil { await auth.refreshConfig() }
         } catch { self.error = error.localizedDescription }
     }
 
@@ -203,9 +276,75 @@ struct AdminSettingsView: View {
             let _: [String: StoreSettings] = try await APIClient.shared.put("/admin/settings/store", [
                 "storeName": s.storeName, "supportTelegram": s.supportTelegram, "supportEmail": s.supportEmail,
                 "pickupAddress": s.pickupAddress, "deliveryPrices": deliveryPrices, "deliveryEnabled": s.deliveryEnabled,
+                "accentLight": s.accentLight, "accentDark": s.accentDark, "botWelcome": s.botWelcome, "botButton": s.botButton,
             ])
+            await auth.refreshConfig()
             saved.toggle()
         } catch { self.error = error.localizedDescription }
+    }
+}
+
+struct BankPickerRow: View {
+    let title: String
+    let banks: [Bank]
+    @Binding var selection: String
+
+    var body: some View {
+        NavigationLink {
+            BankListView(title: title, banks: banks, selection: $selection)
+        } label: {
+            HStack {
+                Text(title)
+                Spacer()
+                if let bank = banks.first(where: { $0.id == selection }) {
+                    BankAvatar(bank: bank, size: 24)
+                    Text(bank.name).foregroundStyle(.secondary)
+                } else {
+                    Text("Не выбран").foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+}
+
+struct BankListView: View {
+    let title: String
+    let banks: [Bank]
+    @Binding var selection: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    private var filtered: [Bank] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        return q.isEmpty ? banks : banks.filter { $0.name.localizedCaseInsensitiveContains(q) }
+    }
+
+    var body: some View {
+        List {
+            if !selection.isEmpty {
+                Button("Не указывать") {
+                    selection = ""
+                    dismiss()
+                }
+                .foregroundStyle(.secondary)
+            }
+            ForEach(filtered) { bank in
+                Button {
+                    selection = bank.id
+                    dismiss()
+                } label: {
+                    HStack(spacing: 12) {
+                        BankAvatar(bank: bank, size: 32)
+                        Text(bank.name).foregroundStyle(.primary)
+                        Spacer()
+                        if bank.id == selection { Image(systemName: "checkmark").foregroundStyle(.tint) }
+                    }
+                }
+            }
+        }
+        .searchable(text: $query, prompt: "Поиск банка")
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

@@ -42,16 +42,44 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
 }
 
 enum DeliveryMethod: String, Codable, CaseIterable, Identifiable {
-    case PICKUP, COURIER, POST
+    case CDEK, RUSSIAN_POST, HAND
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .PICKUP: "Самовывоз"
-        case .COURIER: "Курьер"
-        case .POST: "Почта / ПВЗ"
+        case .CDEK: "СДЭК"
+        case .RUSSIAN_POST: "Почта России"
+        case .HAND: "Лично в руки"
         }
     }
+
+    var icon: String {
+        switch self {
+        case .CDEK: "shippingbox"
+        case .RUSSIAN_POST: "envelope"
+        case .HAND: "hand.raised"
+        }
+    }
+}
+
+struct Bank: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let short: String
+    let bg: String
+    let fg: String
+}
+
+struct ThemeColors: Codable, Equatable {
+    var accentLight: String
+    var accentDark: String
+}
+
+struct PublicConfig: Codable {
+    let storeName: String
+    let botUsername: String
+    let theme: ThemeColors
+    let banks: [Bank]
 }
 
 struct User: Codable, Identifiable, Equatable {
@@ -231,6 +259,10 @@ struct StoreSettings: Codable {
     var pickupAddress: String
     var deliveryPrices: [String: Int]
     var deliveryEnabled: [String: Bool]
+    var accentLight: String
+    var accentDark: String
+    var botWelcome: String
+    var botButton: String
 }
 
 struct RevenueBucket: Codable { let sum: Int; let count: Int }

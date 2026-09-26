@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { BankName } from "../components/Bank";
 import { Icon } from "../components/Icon";
 import { AuthImage, CopyValue, ErrorState, NavBar, PageLoader, Spinner, StatusBadge, useAsync } from "../components/ui";
 import { api, ApiError } from "../lib/api";
@@ -7,6 +8,20 @@ import { useAuth } from "../lib/auth";
 import { dateTime, DELIVERY_LABEL, progressStep, rub, STATUS_LABEL, timeLeft } from "../lib/format";
 import { useToast } from "../lib/toast";
 import type { Order } from "../lib/types";
+
+function PayLabel({ title, bank }: { title: string; bank: string }) {
+  return (
+    <span className="pay-label">
+      {title}
+      {bank && (
+        <>
+          <span className="muted"> · </span>
+          <BankName id={bank} />
+        </>
+      )}
+    </span>
+  );
+}
 
 export default function OrderDetail() {
   const { number = "" } = useParams();
@@ -99,17 +114,27 @@ export default function OrderDetail() {
             <div className="list">
               <CopyValue label="Сумма к оплате" value={String(order.total / 100)} display={rub(order.total)} />
               {p.sbpPhone && (
-                <CopyValue label={`СБП${p.sbpBank ? ` · ${p.sbpBank}` : ""}`} value={p.sbpPhone.replace(/[^\d+]/g, "")} display={p.sbpPhone} />
+                <CopyValue
+                  label={<PayLabel title="Перевод по СБП" bank={p.sbpBank} />}
+                  value={p.sbpPhone.replace(/[^\d+]/g, "")}
+                  display={p.sbpPhone}
+                />
               )}
               {p.cardNumber && (
-                <CopyValue label={`Карта${p.cardBank ? ` · ${p.cardBank}` : ""}`} value={p.cardNumber.replace(/\s/g, "")} display={p.cardNumber.replace(/(\d{4})(?=\d)/g, "$1 ")} />
+                <CopyValue
+                  label={<PayLabel title="Перевод на карту" bank={p.cardBank} />}
+                  value={p.cardNumber.replace(/\s/g, "")}
+                  display={p.cardNumber.replace(/\s/g, "").replace(/(\d{4})(?=\d)/g, "$1 ")}
+                />
               )}
-              <div className="cell">
-                <div className="cell-main">
-                  <div className="footnote">Получатель</div>
-                  <div style={{ marginTop: 2 }}>{p.recipientName}</div>
+              {p.recipientName && (
+                <div className="cell">
+                  <div className="cell-main">
+                    <div className="footnote">Получатель</div>
+                    <div style={{ marginTop: 2 }}>{p.recipientName}</div>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
             <div className="section-footer">
               {p.instructions || "Переведите точную сумму. В комментарии к переводу ничего писать не нужно."}
@@ -122,7 +147,7 @@ export default function OrderDetail() {
             <input
               ref={fileRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
               hidden
               onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
             />

@@ -1,11 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { EmailCodeForm } from "../components/EmailCodeForm";
-import { takeTelegramRedirectResult, TelegramLogin, type TelegramAuthData } from "../components/TelegramLogin";
+import { TelegramLogin } from "../components/TelegramLogin";
 import { NavBar } from "../components/ui";
-import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { useToast } from "../lib/toast";
 import type { User } from "../lib/types";
 
 export function safeNext(raw: string | null) {
@@ -17,13 +15,7 @@ export default function Login() {
   const [params] = useSearchParams();
   const next = safeNext(params.get("next"));
   const navigate = useNavigate();
-  const toast = useToast();
   const [tab, setTab] = useState<"telegram" | "email">("telegram");
-
-  useEffect(() => {
-    const redirected = takeTelegramRedirectResult();
-    if (redirected) void onTelegram(redirected);
-  }, []);
 
   if (user) return <Navigate to={next} replace />;
 
@@ -43,15 +35,6 @@ export default function Login() {
     setUser(u);
     await refreshCart().catch(() => undefined);
     navigate(next, { replace: true });
-  }
-
-  async function onTelegram(data: TelegramAuthData) {
-    try {
-      const r = await api.post<{ user: User }>("/auth/telegram/widget", { data, client: "WEB" });
-      await done(r.user);
-    } catch (e) {
-      toast(e instanceof ApiError ? e.message : "Не удалось войти", true);
-    }
   }
 
   return (
@@ -74,13 +57,10 @@ export default function Login() {
         <div className="mt-24">
           {tab === "telegram" ? (
             <div className="stack">
-              {config?.botUsername ? (
-                <TelegramLogin botUsername={config.botUsername} onAuth={onTelegram} />
-              ) : (
-                <div className="footnote center">Вход через Telegram временно недоступен</div>
-              )}
+              <TelegramLogin onDone={done} />
               <div className="footnote center">
-                Нажмите кнопку и подтвердите вход в Telegram. Мы получим только имя и username — без доступа к перепискам.
+                Откроется чат с ботом {config?.botUsername ? `@${config.botUsername}` : ""}. Нажмите «Старт», затем
+                «Подтвердить вход» — и вернитесь сюда. Мы получим только имя и username, без доступа к перепискам.
               </div>
             </div>
           ) : (

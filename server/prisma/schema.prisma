@@ -31,9 +31,16 @@ enum OrderStatus {
 }
 
 enum DeliveryMethod {
-  PICKUP
-  COURIER
-  POST
+  CDEK
+  RUSSIAN_POST
+  HAND
+}
+
+enum TelegramLoginStatus {
+  PENDING
+  CONFIRMED
+  DENIED
+  USED
 }
 
 model User {
@@ -87,19 +94,21 @@ model EmailCode {
   @@index([email, createdAt])
 }
 
-model AppAuthCode {
-  id            String    @id @default(cuid())
-  codeHash      String    @unique
-  challenge     String
-  userId        String
-  createdAt     DateTime  @default(now())
-  expiresAt     DateTime
-  usedAt        DateTime?
-}
-
-model UsedTelegramAuth {
-  hash      String   @id
-  expiresAt DateTime
+model TelegramLogin {
+  id          String              @id @default(cuid())
+  publicId    String              @unique
+  secretHash  String
+  client      SessionClient
+  linkUserId  String?
+  status      TelegramLoginStatus @default(PENDING)
+  telegramId  BigInt?
+  tgUsername  String?
+  tgFirstName String?
+  tgLastName  String?
+  userAgent   String              @default("")
+  ip          String              @default("")
+  createdAt   DateTime            @default(now())
+  expiresAt   DateTime
 
   @@index([expiresAt])
 }

@@ -37,10 +37,18 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
 };
 
 export const DELIVERY_LABEL: Record<DeliveryMethod, string> = {
-  PICKUP: "Самовывоз",
-  COURIER: "Курьер",
-  POST: "Почта / ПВЗ",
+  CDEK: "СДЭК",
+  RUSSIAN_POST: "Почта России",
+  HAND: "Лично в руки",
 };
+
+export const DELIVERY_HINT: Record<DeliveryMethod, string> = {
+  CDEK: "До пункта выдачи СДЭК",
+  RUSSIAN_POST: "До отделения Почты России",
+  HAND: "Встреча и передача лично",
+};
+
+export const DELIVERY_ORDER: DeliveryMethod[] = ["CDEK", "RUSSIAN_POST", "HAND"];
 
 const PROGRESS: OrderStatus[] = ["AWAITING_PAYMENT", "PAYMENT_REVIEW", "ASSEMBLING", "SHIPPED", "READY_FOR_PICKUP", "COMPLETED"];
 

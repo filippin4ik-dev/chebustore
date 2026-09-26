@@ -11,6 +11,7 @@ import { config } from "./config.js";
 import { dirs } from "./lib/files.js";
 import { HttpError } from "./lib/errors.js";
 import authPlugin from "./plugins/auth.js";
+import addressRoutes from "./routes/address.js";
 import adminRoutes from "./routes/admin.js";
 import authRoutes from "./routes/auth.js";
 import cartRoutes from "./routes/cart.js";
@@ -104,6 +105,7 @@ export async function buildApp() {
   await app.register(cartRoutes);
   await app.register(orderRoutes);
   await app.register(adminRoutes);
+  await app.register(addressRoutes);
   await app.register(telegramRoutes);
 
   return app;

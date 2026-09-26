@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, setBearer, setUnauthorizedHandler } from "./api";
 import { isMiniApp, tg } from "./telegram";
+import { applyTheme } from "./theme";
 import type { Cart, PublicConfig, User } from "./types";
 
 interface AuthState {
@@ -57,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setAuthError((e as Error).message);
       }
       const c = await cfg;
+      if (c) applyTheme(c.theme);
       if (!cancelled) {
         setConfig(c);
         setReady(true);

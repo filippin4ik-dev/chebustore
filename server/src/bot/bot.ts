@@ -1,12 +1,40 @@
 import { InlineKeyboard } from "grammy";
 import { config } from "../config.js";
 import { prisma } from "../db.js";
+import { getStoreSettings } from "../lib/settings.js";
 import { REJECT_REASONS, rub } from "../services/notify.js";
 import { STATUS_TEXT } from "../services/orders.js";
 import { approvePayment, rejectPayment } from "../services/payments.js";
+import { describeDevice, findPendingTelegramLogin, resolveTelegramLogin } from "../services/telegramLogin.js";
 import { bot } from "./instance.js";
 
 const shopUrl = () => `${config.PUBLIC_URL}/`;
+
+type Reply = (text: string, other?: Parameters<typeof bot.api.sendMessage>[2]) => Promise<unknown>;
+
+async function askLoginConfirmation(reply: Reply, publicId: string) {
+  const login = await findPendingTelegramLogin(publicId);
+  if (!login) {
+    await reply("Ссылка для входа устарела. Вернитесь на сайт и нажмите «Войти через Telegram» ещё раз.");
+    return;
+  }
+  const host = new URL(config.PUBLIC_URL).host;
+  const what = login.linkUserId
+    ? `Привязка Telegram к аккаунту на ${host}`
+    : login.client === "IOS"
+      ? "Вход в приложение CHEBU для сотрудников"
+      : `Вход на сайт ${host}`;
+  const time = login.createdAt.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" });
+  await reply(
+    `${what}\n\nУстройство: ${describeDevice(login.userAgent)}\nЗапрос создан: ${time} МСК\n\nЕсли это вы — подтвердите. Если вы ничего не нажимали, отмените и никому не пересылайте ссылку.`,
+    {
+      reply_markup: new InlineKeyboard()
+        .text("✅ Подтвердить вход", `tl:a:${publicId}`)
+        .row()
+        .text("Отмена", `tl:d:${publicId}`),
+    },
+  );
+}
 
 async function staffByTelegram(tgId: number) {
   const user = await prisma.user.findUnique({ where: { telegramId: BigInt(tgId) } });
@@ -18,20 +46,45 @@ export function setupBot() {
   bot.catch((err) => console.error("bot error:", err.error));
 
   bot.command("start", async (ctx) => {
-    if (ctx.chat.type !== "private") return;
-    const kb = new InlineKeyboard().webApp("Открыть магазин", shopUrl());
-    await ctx.reply(
-      "Привет! Это CHEBU.\n\nКаталог, корзина и статусы заказов — внутри приложения. Уведомления о заказах будут приходить сюда.",
-      { reply_markup: kb },
-    );
+    if (ctx.chat.type !== "private" || !ctx.from) return;
+    const payload = typeof ctx.match === "string" ? ctx.match.trim() : "";
+    if (payload.startsWith("login_")) {
+      await askLoginConfirmation(ctx.reply.bind(ctx), payload.slice(6));
+      return;
+    }
+    const store = await getStoreSettings();
+    await ctx.reply(store.botWelcome, {
+      reply_markup: new InlineKeyboard().webApp(store.botButton, shopUrl()),
+      link_preview_options: { is_disabled: true },
+    });
+  });
+
+  bot.callbackQuery(/^tl:(a|d):([A-Za-z0-9_-]{22})$/, async (ctx) => {
+    const [, action, publicId] = ctx.match;
+    const approve = action === "a";
+    const ok = await resolveTelegramLogin(publicId!, approve, ctx.from);
+    if (!ok) {
+      await ctx.answerCallbackQuery({ text: "Запрос устарел. Начните вход заново.", show_alert: true });
+      await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => undefined);
+      return;
+    }
+    await ctx.answerCallbackQuery({ text: approve ? "Вход подтверждён" : "Вход отменён" });
+    await ctx
+      .editMessageText(
+        approve
+          ? "✅ Вход подтверждён.\n\nВернитесь в браузер или приложение — вход завершится автоматически."
+          : "Вход отменён. Если это были не вы — просто проигнорируйте.",
+      )
+      .catch(() => undefined);
   });
 
   bot.command("orders", async (ctx) => {
     if (ctx.chat.type !== "private" || !ctx.from) return;
     const user = await prisma.user.findUnique({ where: { telegramId: BigInt(ctx.from.id) } });
     if (!user) {
+      const store = await getStoreSettings();
       await ctx.reply("Заказов пока нет. Откройте магазин кнопкой ниже.", {
-        reply_markup: new InlineKeyboard().webApp("Открыть магазин", shopUrl()),
+        reply_markup: new InlineKeyboard().webApp(store.botButton, shopUrl()),
       });
       return;
     }

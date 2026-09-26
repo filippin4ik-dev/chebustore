@@ -32,7 +32,7 @@ export function sniff(buf: Buffer): Sniffed {
 }
 
 const safeName = (name: string) => {
-  if (!/^[A-Za-z0-9_-]+\.(webp|jpg|pdf)$/.test(name)) throw badRequest("Некорректное имя файла");
+  if (!/^[A-Za-z0-9_-]+\.(webp|jpg|pdf|heic)$/.test(name)) throw badRequest("Некорректное имя файла");
   return name;
 };
 
@@ -47,12 +47,12 @@ async function reencode(buf: Buffer, maxSide: number, quality: number) {
 
 export async function saveProductImage(buf: Buffer) {
   const kind = sniff(buf);
-  if (!kind || kind === "pdf") throw badRequest("Поддерживаются JPEG, PNG, WEBP и HEIC");
+  if (!kind || kind === "pdf") throw badRequest("Поддерживаются JPEG, PNG и WEBP");
   let out;
   try {
     out = await reencode(buf, 1800, 86);
   } catch {
-    throw badRequest("Не удалось обработать изображение");
+    throw badRequest(kind === "heic" ? "HEIC не поддерживается — сохраните фото как JPEG" : "Не удалось обработать изображение");
   }
   const fileName = `${randomToken(18)}.webp`;
   await writeFile(path.join(dirs.products, fileName), out.data, { mode: 0o644 });
@@ -75,6 +75,11 @@ export async function saveReceipt(buf: Buffer) {
   try {
     out = await reencode(buf, 2400, 90);
   } catch {
+    if (kind === "heic") {
+      const fileName = `${randomToken(24)}.heic`;
+      await writeFile(path.join(dirs.receipts, fileName), buf, { mode: 0o600 });
+      return { fileName, mimeType: "image/heic", sizeBytes: buf.length };
+    }
     throw badRequest("Не удалось обработать изображение чека");
   }
   const fileName = `${randomToken(24)}.webp`;

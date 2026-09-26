@@ -30,7 +30,7 @@ const schema = z.object({
   SMTP_PASS: z.string().optional(),
   MAIL_FROM: z.string().default("CHEBU <no-reply@chebustore.ru>"),
 
-  IOS_REDIRECT_URI: z.string().default("chebustore://auth"),
+  DADATA_API_KEY: z.string().optional(),
 
   BOOTSTRAP_ADMIN_EMAILS: z.string().default(""),
   BOOTSTRAP_ADMIN_TELEGRAM_IDS: z.string().default(""),

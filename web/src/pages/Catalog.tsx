@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { ProductCard } from "../components/ProductCard";
-import { Empty, ErrorState, PageLoader, Spinner } from "../components/ui";
+import { Empty, ErrorState, Spinner } from "../components/ui";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import type { Category, Product } from "../lib/types";
@@ -133,14 +133,22 @@ export default function Catalog() {
         {error ? (
           <ErrorState message={error} retry={() => setParams(new URLSearchParams(params))} />
         ) : !products ? (
-          <PageLoader />
+          <div className="grid" aria-busy="true">
+            {Array.from({ length: 8 }, (_, i) => (
+              <div key={i}>
+                <div className="card-img skeleton" />
+                <div className="skeleton skeleton-line" style={{ width: "80%" }} />
+                <div className="skeleton skeleton-line" style={{ width: "40%" }} />
+              </div>
+            ))}
+          </div>
         ) : products.length === 0 ? (
           <Empty icon="search" title="Ничего не найдено" text="Попробуйте изменить запрос или выбрать другую категорию." />
         ) : (
           <>
             <div className="grid">
-              {products.map((p) => (
-                <ProductCard key={p.id} p={p} />
+              {products.map((p, i) => (
+                <ProductCard key={p.id} p={p} index={i} />
               ))}
             </div>
             {products.length < total && (
