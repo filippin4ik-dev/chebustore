@@ -1,4 +1,4 @@
-# ЧЕБУ STORE
+# chebu store
 
 Интернет-магазин одежды: сайт **chebustore.ru**, Telegram-бот с Mini App, приложение для iPhone и админка. Всё работает от одного сервера.
 

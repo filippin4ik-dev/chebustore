@@ -1198,9 +1198,25 @@ button.cell:active {
 }
 
 .brand {
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.logo {
+  display: block;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 0 0.5px var(--separator);
+}
+
+.brand-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .desktop-header {

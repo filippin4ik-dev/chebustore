@@ -18,7 +18,8 @@ struct LoginView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     VStack(spacing: 8) {
-                        Text("ЧЕБУ").font(.system(size: 34, weight: .heavy)).tracking(4)
+                        BrandLogo(size: 96)
+                        Text("chebu store").font(.title.weight(.bold))
                         Text("Один аккаунт для сайта, Telegram и приложения")
                             .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     }

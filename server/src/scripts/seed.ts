@@ -19,7 +19,7 @@ async function main() {
     create: {
       key: "store",
       value: {
-        storeName: "ЧЕБУ STORE",
+        storeName: "chebu store",
         supportTelegram: "",
         supportEmail: "",
         pickupAddress: "",

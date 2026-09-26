@@ -59,6 +59,7 @@ export default function Login() {
     <>
       <NavBar title="Вход" back />
       <div className="container narrow" style={{ maxWidth: 420 }}>
+        <img className="logo mt-16" src="/logo-192.jpg" alt="chebu store" width={72} height={72} />
         <h1 className="large-title">Вход</h1>
         <p className="subhead muted" style={{ marginTop: 0 }}>
           Один аккаунт для сайта, Telegram и приложения на iPhone.

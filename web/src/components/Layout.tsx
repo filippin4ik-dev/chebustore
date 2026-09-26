@@ -19,7 +19,8 @@ export function StoreLayout() {
       <div className="desktop-header">
         <div className="container desktop-header-inner">
           <NavLink to="/" className="brand">
-            {(config?.storeName ?? "ЧЕБУ STORE").toUpperCase()}
+            <img className="logo" src="/logo-192.jpg" alt="" width={28} height={28} />
+            {config?.storeName ?? "chebu store"}
           </NavLink>
           <nav className="desktop-nav">
             {tabs.map((t) => (

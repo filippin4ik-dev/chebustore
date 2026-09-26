@@ -31,7 +31,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function codeFor(email) {
   for (let i = 0; i < 20; i++) {
     const log = readFileSync(LOG, "utf8");
-    const re = new RegExp(`to=${email.replace(/[.@]/g, "\\$&")}[\\s\\S]*?Код для входа в ЧЕБУ STORE: (\\d{6})`, "g");
+    const re = new RegExp(`to=${email.replace(/[.@]/g, "\\$&")}[\\s\\S]*?Код для входа в chebu store: (\\d{6})`, "g");
     const all = [...log.matchAll(re)];
     if (all.length) return all[all.length - 1][1];
     await sleep(250);
@@ -66,7 +66,7 @@ const cats = await call("GET", "/api/admin/categories", { token: A });
 const hoodies = cats.data.categories.find((c) => c.slug === "hoodies");
 const created = await call("POST", "/api/admin/products", {
   token: A,
-  body: { title: "Худи Чебу оверсайз", description: "Хлопок 100%", categoryId: hoodies.id, basePrice: 499000, oldPrice: 599000 },
+  body: { title: "Худи оверсайз", description: "Хлопок 100%", categoryId: hoodies.id, basePrice: 499000, oldPrice: 599000 },
 });
 assert.equal(created.status, 200, JSON.stringify(created.data));
 const productId = created.data.product.id;

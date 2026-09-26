@@ -88,7 +88,10 @@ export default function Catalog() {
 
   return (
     <div className="container">
-      <h1 className="large-title">{config?.storeName ?? "ЧЕБУ STORE"}</h1>
+      <div className="brand-title">
+        <h1 className="large-title">{config?.storeName ?? "chebu store"}</h1>
+        <img className="logo" src="/logo-192.jpg" alt="" width={40} height={40} />
+      </div>
       <label className="search">
         <Icon name="search" size={18} />
         <input

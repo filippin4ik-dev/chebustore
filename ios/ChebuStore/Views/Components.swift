@@ -1,6 +1,20 @@
 import SwiftUI
 import UIKit
 
+struct BrandLogo: View {
+    var size: CGFloat = 32
+
+    var body: some View {
+        Image("Logo")
+            .resizable()
+            .scaledToFill()
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+            .overlay(Circle().strokeBorder(.separator, lineWidth: 0.5))
+            .accessibilityLabel("chebu store")
+    }
+}
+
 struct RemoteImage: View {
     let path: String?
     var contentMode: ContentMode = .fill

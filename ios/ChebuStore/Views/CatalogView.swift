@@ -53,7 +53,8 @@ struct CatalogView: View {
                     }
                 }
             }
-            .navigationTitle(auth.config?.storeName ?? "ЧЕБУ STORE")
+            .navigationTitle(auth.config?.storeName ?? "chebu store")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { BrandLogo(size: 32) } }
             .searchable(text: $query, prompt: "Поиск")
             .navigationDestination(for: Product.self) { ProductView(slug: $0.slug, preview: $0) }
             .refreshable { await load(reset: true) }

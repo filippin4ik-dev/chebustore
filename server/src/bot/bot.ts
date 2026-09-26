@@ -21,7 +21,7 @@ export function setupBot() {
     if (ctx.chat.type !== "private") return;
     const kb = new InlineKeyboard().webApp("Открыть магазин", shopUrl());
     await ctx.reply(
-      "Привет! Это ЧЕБУ STORE.\n\nКаталог, корзина и статусы заказов — внутри приложения. Уведомления о заказах будут приходить сюда.",
+      "Привет! Это chebu store.\n\nКаталог, корзина и статусы заказов — внутри приложения. Уведомления о заказах будут приходить сюда.",
       { reply_markup: kb },
     );
   });

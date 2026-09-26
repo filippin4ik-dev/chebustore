@@ -53,7 +53,7 @@ struct RootView: View {
         .overlay {
             // Hides payment details and customer data in the app switcher snapshot.
             if privacyCover {
-                Rectangle().fill(.background).ignoresSafeArea().overlay(Text("ЧЕБУ").font(.largeTitle.weight(.heavy)))
+                Rectangle().fill(.background).ignoresSafeArea().overlay(BrandLogo(size: 120))
             }
         }
         .onChange(of: scenePhase) { _, phase in privacyCover = phase != .active }

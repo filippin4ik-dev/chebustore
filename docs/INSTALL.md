@@ -1,4 +1,4 @@
-# Установка и эксплуатация ЧЕБУ STORE
+# Установка и эксплуатация chebu store
 
 Инструкция написана так, чтобы её можно было пройти сверху вниз. Настройка Telegram вынесена в [TELEGRAM.md](TELEGRAM.md): пройдите её параллельно с шагом 4.
 
@@ -136,7 +136,7 @@ openssl rand -hex 32      # → TELEGRAM_WEBHOOK_SECRET
    SMTP_SECURE=true
    SMTP_USER=no-reply@chebustore.ru
    SMTP_PASS=<пароль приложения>
-   MAIL_FROM=ЧЕБУ STORE <no-reply@chebustore.ru>
+   MAIL_FROM=chebu store <no-reply@chebustore.ru>
    ```
 
 Чтобы письма не попадали в спам, добавьте в DNS записи, которые покажет Яндекс 360: **SPF** (TXT `v=spf1 redirect=_spf.yandex.net`), **DKIM** (TXT `mail._domainkey`) и **DMARC** (TXT `_dmarc` → `v=DMARC1; p=none`).

@@ -28,7 +28,7 @@ const schema = z.object({
   SMTP_SECURE: bool.default("true"),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  MAIL_FROM: z.string().default("ЧЕБУ STORE <no-reply@chebustore.ru>"),
+  MAIL_FROM: z.string().default("chebu store <no-reply@chebustore.ru>"),
 
   IOS_REDIRECT_URI: z.string().default("chebustore://auth"),
 

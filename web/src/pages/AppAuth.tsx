@@ -54,7 +54,7 @@ export default function AppAuth() {
   }, []);
 
   if (!valid) {
-    return <div className="page-center subhead muted">Откройте вход из приложения ЧЕБУ STORE.</div>;
+    return <div className="page-center subhead muted">Откройте вход из приложения chebu store.</div>;
   }
 
   return (

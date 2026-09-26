@@ -22,7 +22,8 @@ export default function AdminLayout() {
     <div className="admin-shell">
       <aside className="admin-side">
         <div className="brand" style={{ padding: "8px 12px 16px" }}>
-          АДМИНКА
+          <img className="logo" src="/logo-192.jpg" alt="" width={28} height={28} />
+          админка
         </div>
         {visible.map((l) => (
           <NavLink key={l.to} to={l.to} end={l.end}>

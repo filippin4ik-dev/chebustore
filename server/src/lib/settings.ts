@@ -17,7 +17,7 @@ export const paymentSettingsSchema = z.object({
 });
 
 export const storeSettingsSchema = z.object({
-  storeName: z.string().trim().min(1).max(64).default("ЧЕБУ STORE"),
+  storeName: z.string().trim().min(1).max(64).default("chebu store"),
   supportTelegram: z.string().trim().max(64).default(""),
   supportEmail: z.string().trim().max(128).default(""),
   pickupAddress: z.string().trim().max(300).default(""),
