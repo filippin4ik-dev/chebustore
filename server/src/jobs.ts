@@ -17,7 +17,8 @@ async function expireUnpaidOrders() {
         note: "Автоотмена: оплата не поступила вовремя",
       });
       void notifyStatus(order, "Срок оплаты истёк, товары вернулись в продажу.");
-    } catch {
+    } catch (e) {
+      console.warn(`expire order ${id} skipped: ${(e as Error).message}`);
     }
   }
 }

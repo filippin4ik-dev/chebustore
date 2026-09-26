@@ -6,13 +6,21 @@ import { prisma } from "./db.js";
 import { startJobs } from "./jobs.js";
 import { ensureDirs } from "./lib/files.js";
 
+process.on("unhandledRejection", (e) => console.error("unhandled rejection:", e));
+
 async function main() {
   await ensureDirs();
   await prisma.$connect();
   const app = await buildApp();
   await app.listen({ port: config.PORT, host: config.HOST });
   startJobs();
-  startBot().catch((e) => app.log.error(e, "telegram bot failed to start"));
+
+  const launchBot = () =>
+    startBot().catch((e) => {
+      app.log.error(e, "telegram bot failed to start, retrying in 30s");
+      setTimeout(launchBot, 30_000);
+    });
+  void launchBot();
 
   const shutdown = async () => {
     app.log.info("shutting down");

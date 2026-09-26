@@ -30,6 +30,12 @@ services:
       DATABASE_URL: postgresql://chebu:${POSTGRES_PASSWORD}@db:5432/chebustore?schema=public
     volumes:
       - appdata:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
     depends_on:
       db:
         condition: service_healthy

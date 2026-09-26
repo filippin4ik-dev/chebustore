@@ -79,8 +79,13 @@ export function setupBot() {
   });
 }
 
+let configured = false;
+
 export async function startBot() {
-  setupBot();
+  if (!configured) {
+    setupBot();
+    configured = true;
+  }
   await bot.init();
   const menuButton = config.PUBLIC_URL.startsWith("https://")
     ? { type: "web_app" as const, text: "Магазин", web_app: { url: shopUrl() } }

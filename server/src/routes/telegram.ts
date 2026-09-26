@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { bot } from "../bot/instance.js";
 import { config } from "../config.js";
-import { forbidden, notFound } from "../lib/errors.js";
+import { forbidden, HttpError, notFound } from "../lib/errors.js";
 
 export default async function telegramRoutes(app: FastifyInstance) {
   app.post("/api/telegram/webhook", { config: { rateLimit: false } }, async (req) => {
@@ -10,6 +10,7 @@ export default async function telegramRoutes(app: FastifyInstance) {
     const got = Buffer.from(String(req.headers["x-telegram-bot-api-secret-token"] ?? ""));
     const want = Buffer.from(config.TELEGRAM_WEBHOOK_SECRET);
     if (got.length !== want.length || !timingSafeEqual(got, want)) throw forbidden();
+    if (!bot.isInited()) throw new HttpError(503, "bot_starting", "Бот запускается");
     await bot.handleUpdate(req.body as any);
     return { ok: true };
   });
