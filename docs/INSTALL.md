@@ -99,8 +99,8 @@ nano .env
 Заполните значения. Случайные секреты генерируйте прямо на сервере:
 
 ```bash
-openssl rand -base64 32   # → POSTGRES_PASSWORD
-openssl rand -base64 48   # → SERVER_SECRET
+openssl rand -hex 24      # → POSTGRES_PASSWORD (только hex: символы + / = ломают адрес базы)
+openssl rand -hex 48      # → SERVER_SECRET
 openssl rand -hex 32      # → TELEGRAM_WEBHOOK_SECRET
 ```
 
@@ -109,7 +109,7 @@ openssl rand -hex 32      # → TELEGRAM_WEBHOOK_SECRET
 | `DOMAIN` | `chebustore.ru` |
 | `PUBLIC_URL` | `https://chebustore.ru` (без `/` в конце) |
 | `ACME_EMAIL` | Почта для уведомлений Let's Encrypt |
-| `POSTGRES_PASSWORD` | Пароль базы. База не видна из интернета, но пароль должен быть длинным |
+| `POSTGRES_PASSWORD` | Пароль базы. База не видна из интернета, но пароль должен быть длинным. Меняйте его только вместе с паролем внутри базы (раздел 14, «Смена пароля базы») |
 | `SERVER_SECRET` | Главный ключ: им хэшируются токены сессий и коды. **Если его сменить, все пользователи разлогинятся** |
 | `TELEGRAM_BOT_TOKEN` | Токен от @BotFather (см. [TELEGRAM.md](TELEGRAM.md)) |
 | `TELEGRAM_BOT_USERNAME` | Имя бота без `@`, например `chebustore_bot` |
@@ -318,6 +318,8 @@ npm run dev          # http://localhost:5173
 |---------|---------------|
 | Сайт не открывается, ошибка сертификата | DNS указывает на сервер? Порты 80/443 открыты? `docker compose logs web` |
 | `api` постоянно перезапускается | `docker compose logs api`: обычно в `.env` не заполнена обязательная переменная, об этом будет понятное сообщение |
+| `P1000: Authentication failed` в логах api | Пароль в `.env` не совпадает с паролем базы — см. «Смена пароля базы» ниже |
+| Сборка зависает на `npm run build` | Мало памяти: добавьте подкачку `fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile` |
 | Бот не отвечает | `docker compose logs api \| grep telegram`. Верный ли токен? Проверьте `https://api.telegram.org/bot<ТОКЕН>/getWebhookInfo`: `url` должен быть `https://chebustore.ru/api/telegram/webhook`, `last_error_message` пустой |
 | «Bot domain invalid» на кнопке входа | В @BotFather не выполнен `/setdomain` (см. [TELEGRAM.md](TELEGRAM.md)) |
 | Не приходит код на почту | SMTP-логин и пароль приложения, `docker compose logs api \| grep -i mail`, папка «Спам», записи SPF/DKIM |
@@ -325,6 +327,15 @@ npm run dev          # http://localhost:5173
 | Не приходят чеки в Telegram | Сотрудник привязал Telegram в профиле и хотя бы раз нажал /start у бота? Если задан `TELEGRAM_ADMIN_CHAT_ID`, бот добавлен в эту группу? |
 | Нельзя оформить заказ | Заполнены реквизиты оплаты? У товара есть варианты с остатком? |
 | Мало места на диске | `docker system df`, `docker image prune -a`, проверьте размер бэкапов |
+
+**Смена пароля базы** (данные сохраняются):
+
+```bash
+cd ~/chebustore
+sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env
+docker compose exec db psql -U chebu -d chebustore -c "ALTER USER chebu PASSWORD '$(grep ^POSTGRES_PASSWORD= .env | cut -d= -f2)';"
+docker compose up -d
+```
 
 ## 15. Чек-лист безопасности
 
