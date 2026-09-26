@@ -1,5 +1,3 @@
-// End-to-end smoke test against a running dev server (NODE_ENV=development prints login codes to stdout).
-// Usage: SERVER_LOG=/path/to/server.log node test/e2e.mjs
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import sharp from "sharp";
@@ -10,7 +8,8 @@ const LOG = process.env.SERVER_LOG;
 
 async function call(method, path, { token, body, cookie, csrf = true, origin = ORIGIN, form } = {}) {
   const headers = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (token?.startsWith("cookie:")) headers.Cookie = token.slice(7);
+  else if (token) headers.Authorization = `Bearer ${token}`;
   if (cookie) headers.Cookie = cookie;
   if (csrf) headers["X-CS-CSRF"] = "1";
   if (origin) headers.Origin = origin;
@@ -31,7 +30,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function codeFor(email) {
   for (let i = 0; i < 20; i++) {
     const log = readFileSync(LOG, "utf8");
-    const re = new RegExp(`to=${email.replace(/[.@]/g, "\\$&")}[\\s\\S]*?Код для входа в chebu store: (\\d{6})`, "g");
+    const re = new RegExp(`to=${email.replace(/[.@]/g, "\\$&")}[\\s\\S]*?Код для входа в CHEBU: (\\d{6})`, "g");
     const all = [...log.matchAll(re)];
     if (all.length) return all[all.length - 1][1];
     await sleep(250);
@@ -48,20 +47,23 @@ async function login(email, client = "IOS") {
   return { ...r2, code };
 }
 
+async function customer(email) {
+  const r = await login(email, "WEB");
+  r.data.token = "cookie:" + r.headers.get("set-cookie").split(";")[0];
+  return r;
+}
+
 const ok = (name) => console.log(`✔ ${name}`);
 
-// ---- Admin login (bootstrap email) ----
 const admin = await login("admin@chebustore.ru");
 assert.equal(admin.data.user.role, "ADMIN");
 const A = admin.data.token;
 ok("admin login via email code, bootstrap role ADMIN");
 
-// code reuse must fail
 const reuse = await call("POST", "/api/auth/email/verify", { body: { email: "admin@chebustore.ru", code: admin.code, client: "IOS" } });
 assert.equal(reuse.status, 400);
 ok("one-time code cannot be reused");
 
-// ---- Catalog setup ----
 const cats = await call("GET", "/api/admin/categories", { token: A });
 const hoodies = cats.data.categories.find((c) => c.slug === "hoodies");
 const created = await call("POST", "/api/admin/products", {
@@ -94,7 +96,6 @@ const bad = await call("POST", `/api/admin/products/${productId}/images`, { toke
 assert.equal(bad.status, 400);
 ok("non-image disguised as png rejected");
 
-// checkout must fail before payment details exist
 const pay = await call("PUT", "/api/admin/settings/payment", {
   token: A,
   body: { sbpPhone: "+7 900 123-45-67", sbpBank: "Т-Банк", cardNumber: "2200 1234 5678 9012", cardBank: "Сбер", recipientName: "Иван И.", instructions: "", paymentWindowHours: 24 },
@@ -102,7 +103,6 @@ const pay = await call("PUT", "/api/admin/settings/payment", {
 assert.equal(pay.status, 200, JSON.stringify(pay.data));
 ok("admin sets payment details");
 
-// ---- Public catalog ----
 const list = await call("GET", "/api/products?category=hoodies");
 assert.equal(list.data.products.length, 1);
 const pub = list.data.products[0];
@@ -114,8 +114,7 @@ const cfg = await call("GET", "/api/config");
 assert.equal(JSON.stringify(cfg.data).includes("2200"), false);
 ok("public config does not leak payment details");
 
-// ---- Customer ----
-const cust = await login("buyer@example.com");
+const cust = await customer("buyer@example.com");
 const C = cust.data.token;
 assert.equal(cust.data.user.role, "CUSTOMER");
 
@@ -124,6 +123,14 @@ assert.equal(forbidden.status, 403);
 const forbiddenPay = await call("PUT", "/api/admin/settings/payment", { token: C, body: {} });
 assert.equal(forbiddenPay.status, 403);
 ok("customer cannot access admin API");
+
+await call("POST", "/api/auth/email/request", { body: { email: "app-buyer@example.com" } });
+const appDenied = await call("POST", "/api/auth/email/verify", {
+  body: { email: "app-buyer@example.com", code: await codeFor("app-buyer@example.com"), client: "IOS" },
+});
+assert.equal(appDenied.status, 403);
+assert.equal(appDenied.data.error.code, "staff_only");
+ok("iOS admin app refuses non-staff accounts");
 
 const noAuth = await call("GET", "/api/cart");
 assert.equal(noAuth.status, 401);
@@ -154,15 +161,13 @@ const after = await call("GET", "/api/products/" + pub.slug);
 assert.equal(after.data.product.variants.find((v) => v.size === "M").available, false);
 ok("stock decremented after checkout");
 
-// ---- Another user cannot see this order ----
-const other = await login("other@example.com");
+const other = await customer("other@example.com");
 const peek = await call("GET", `/api/orders/${O.number}`, { token: other.data.token });
 assert.equal(peek.status, 404);
 const peekReceipt = await call("POST", `/api/orders/${O.number}/receipt`, { token: other.data.token, form: new FormData() });
 assert.equal(peekReceipt.status, 404);
 ok("other users cannot see or pay someone else's order (IDOR)");
 
-// ---- Receipt ----
 const receipt = new FormData();
 receipt.append("file", new Blob([png], { type: "image/jpeg" }), "receipt.jpg");
 const rc = await call("POST", `/api/orders/${O.number}/receipt`, { token: C, form: receipt });
@@ -176,7 +181,6 @@ const otherFile = await call("GET", `/api/admin/receipts/${rid}`, { token: other
 assert.equal(otherFile.status, 403);
 ok("receipt upload → PAYMENT_REVIEW; receipt private");
 
-// ---- Admin: reject, re-upload, approve ----
 const rej = await call("POST", `/api/admin/orders/${O.number}/reject`, { token: A, body: { reason: "Сумма не совпадает" } });
 assert.equal(rej.status, 200, JSON.stringify(rej.data));
 let st = await call("GET", `/api/orders/${O.number}`, { token: C });
@@ -207,7 +211,6 @@ assert.equal(st.data.order.status, "COMPLETED");
 assert.equal(st.data.order.history.length, 8);
 ok("status flow: собирается → в доставке → можно забрать → получен (invalid jumps blocked)");
 
-// ---- Cancellation returns stock ----
 const L = pub.variants.find((v) => v.size === "L");
 await call("PUT", "/api/cart/items", { token: C, body: { variantId: L.id, quantity: 1 } });
 const o2 = await call("POST", "/api/orders", { token: C, body: { contactName: "Покупатель", contactPhone: "+79991112233", deliveryMethod: "PICKUP" } });
@@ -218,7 +221,6 @@ const again = await call("GET", "/api/products/" + pub.slug);
 assert.equal(again.data.product.variants.find((v) => v.size === "L").available, true);
 ok("variant price override used; cancel returns stock");
 
-// ---- Web cookie session + CSRF ----
 const resend = await call("POST", "/api/auth/email/request", { body: { email: "buyer@example.com" } });
 assert.ok(resend.data.resendIn > 0);
 ok("resend cooldown enforced");
@@ -239,7 +241,6 @@ const good = await call("PUT", "/api/cart/items", { cookie, body: { variantId: L
 assert.equal(good.status, 200);
 ok("web: httpOnly cookie, token not exposed to JS, CSRF enforced");
 
-// ---- Brute force protection ----
 await call("POST", "/api/auth/email/request", { body: { email: "victim@example.com" } });
 let last;
 for (let i = 0; i < 6; i++) {
@@ -248,7 +249,6 @@ for (let i = 0; i < 6; i++) {
 assert.equal(last.status, 429);
 ok("code brute-force locked after 5 attempts");
 
-// ---- Sessions / revoke ----
 const sessions = await call("GET", "/api/account/sessions", { cookie });
 assert.equal(sessions.data.sessions.length, 1);
 assert.equal(sessions.data.sessions[0].current, true);
@@ -257,7 +257,6 @@ const revoked = await call("GET", "/api/auth/me", { cookie });
 assert.equal(revoked.data.user, null);
 ok("logout revokes session server-side (stolen cookie useless)");
 
-// ---- Block user ----
 const users = await call("GET", "/api/admin/users?q=other@example.com", { token: A });
 const otherId = users.data.users[0].id;
 await call("PATCH", `/api/admin/users/${otherId}`, { token: A, body: { isBlocked: true } });

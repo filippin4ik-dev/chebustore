@@ -33,7 +33,6 @@ export default function AdminOrders() {
       }
     }, 350);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
   return (

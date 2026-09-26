@@ -3,7 +3,6 @@ import { api, ApiError } from "../lib/api";
 import type { User } from "../lib/types";
 import { Spinner } from "./ui";
 
-/** Passwordless email flow: request a one-time code, then confirm it (login or link to current account). */
 export function EmailCodeForm({ mode, client = "WEB", onDone }: { mode: "login" | "link"; client?: "WEB"; onDone(user: User): void }) {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");

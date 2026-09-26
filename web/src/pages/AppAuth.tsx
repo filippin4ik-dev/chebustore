@@ -7,10 +7,6 @@ import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import type { User } from "../lib/types";
 
-/**
- * Bridge for the iOS app (ASWebAuthenticationSession): sign in here, then hand a one-time code bound to the
- * app's PKCE challenge back to chebustore://auth. The bearer token itself never passes through the browser.
- */
 export default function AppAuth() {
   const [params] = useSearchParams();
   const { user, setUser, config } = useAuth();
@@ -50,16 +46,18 @@ export default function AppAuth() {
   useEffect(() => {
     const redirected = takeTelegramRedirectResult();
     if (redirected) void onTelegram(redirected);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!valid) {
-    return <div className="page-center subhead muted">Откройте вход из приложения chebu store.</div>;
+    return <div className="page-center subhead muted">Откройте вход из приложения CHEBU.</div>;
   }
 
   return (
     <div className="container narrow" style={{ maxWidth: 420 }}>
-      <h1 className="large-title">Вход в приложение</h1>
+      <h1 className="large-title">Вход в CHEBU</h1>
+      <p className="subhead muted" style={{ marginTop: 0 }}>
+        Приложение для сотрудников магазина.
+      </p>
       {redirecting ? (
         <div className="page-center">
           <Spinner />

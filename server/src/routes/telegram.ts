@@ -10,7 +10,6 @@ export default async function telegramRoutes(app: FastifyInstance) {
     const got = Buffer.from(String(req.headers["x-telegram-bot-api-secret-token"] ?? ""));
     const want = Buffer.from(config.TELEGRAM_WEBHOOK_SECRET);
     if (got.length !== want.length || !timingSafeEqual(got, want)) throw forbidden();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await bot.handleUpdate(req.body as any);
     return { ok: true };
   });

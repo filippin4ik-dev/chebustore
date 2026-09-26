@@ -2,7 +2,6 @@ import SwiftUI
 
 struct LoginView: View {
     @Environment(AuthStore.self) private var auth
-    @Environment(\.dismiss) private var dismiss
     @State private var email = ""
     @State private var code = ""
     @State private var step: Step = .start
@@ -19,8 +18,8 @@ struct LoginView: View {
                 VStack(spacing: 20) {
                     VStack(spacing: 8) {
                         BrandLogo(size: 96)
-                        Text("chebu store").font(.title.weight(.bold))
-                        Text("Один аккаунт для сайта, Telegram и приложения")
+                        Text("CHEBU").font(.title.weight(.bold))
+                        Text("Панель управления магазином. Вход только для сотрудников.")
                             .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     }
                     .padding(.top, 24)
@@ -86,9 +85,6 @@ struct LoginView: View {
                 .padding(.horizontal, 20)
             }
             .background(Color(.systemGroupedBackground))
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } }
-            }
             .errorAlert($error)
             .task(id: resendIn) {
                 guard resendIn > 0 else { return }
@@ -103,7 +99,6 @@ struct LoginView: View {
         defer { busy = false }
         do {
             try await auth.loginWithTelegram()
-            dismiss()
         } catch let e as APIError where e.code == "cancelled" {
         } catch {
             if (error as NSError).domain == "com.apple.AuthenticationServices.WebAuthenticationSession" { return }
@@ -129,7 +124,6 @@ struct LoginView: View {
         defer { busy = false }
         do {
             try await auth.verify(email: email.trimmingCharacters(in: .whitespaces).lowercased(), code: code)
-            dismiss()
         } catch {
             code = ""
             self.error = error.localizedDescription

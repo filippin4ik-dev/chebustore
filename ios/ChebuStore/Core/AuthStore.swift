@@ -8,7 +8,6 @@ import UIKit
 @Observable
 final class AuthStore {
     var user: User?
-    var config: PublicConfig?
     var ready = false
 
     private let api = APIClient.shared
@@ -25,13 +24,11 @@ final class AuthStore {
     }
 
     func bootstrap() async {
-        async let cfg: PublicConfig? = try? api.get("/config")
         if api.token != nil {
             let me: UserEnvelope? = try? await api.get("/auth/me")
             user = me?.user
             if user == nil { api.token = nil }
         }
-        config = await cfg
         ready = true
     }
 
@@ -46,7 +43,6 @@ final class AuthStore {
         user = r.user
     }
 
-    /// Telegram login through the website in an ephemeral ASWebAuthenticationSession, secured with PKCE + state.
     func loginWithTelegram() async throws {
         let verifier = Self.randomURLSafe(32)
         let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64URLEncoded()
@@ -79,11 +75,6 @@ final class AuthStore {
         }
         let r: TokenEnvelope = try await api.post("/auth/app/exchange", ["code": code, "verifier": verifier])
         api.token = r.token
-        user = r.user
-    }
-
-    func updateProfile(firstName: String, lastName: String, phone: String) async throws {
-        let r: UserEnvelope = try await api.patch("/account/profile", ["firstName": firstName, "lastName": lastName, "phone": phone])
         user = r.user
     }
 

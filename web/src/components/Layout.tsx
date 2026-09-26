@@ -20,7 +20,7 @@ export function StoreLayout() {
         <div className="container desktop-header-inner">
           <NavLink to="/" className="brand">
             <img className="logo" src="/logo-192.jpg" alt="" width={28} height={28} />
-            {config?.storeName ?? "chebu store"}
+            {config?.storeName ?? "CHEBU"}
           </NavLink>
           <nav className="desktop-nav">
             {tabs.map((t) => (

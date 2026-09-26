@@ -1,7 +1,10 @@
 import SwiftUI
 
+struct OrdersFilter: Hashable {
+    let status: OrderStatus?
+}
+
 struct AdminHomeView: View {
-    @Environment(AuthStore.self) private var auth
     @State private var stats: AdminStats?
     @State private var error: String?
 
@@ -12,7 +15,7 @@ struct AdminHomeView: View {
                     let review = s.byStatus[OrderStatus.PAYMENT_REVIEW.rawValue] ?? 0
                     if review > 0 {
                         Section {
-                            NavigationLink(value: AdminRoute.orders(.PAYMENT_REVIEW)) {
+                            NavigationLink(value: OrdersFilter(status: .PAYMENT_REVIEW)) {
                                 Label("Чеков на проверке: \(review)", systemImage: "doc.text.magnifyingglass")
                                     .foregroundStyle(.orange)
                                     .fontWeight(.semibold)
@@ -26,10 +29,9 @@ struct AdminHomeView: View {
                         LabeledContent("Покупатели", value: "\(s.customers)")
                         LabeledContent("Мало на складе", value: "\(s.lowStock)")
                     }
-                    Section("Заказы") {
-                        NavigationLink(value: AdminRoute.orders(nil)) { Label("Все заказы", systemImage: "list.bullet") }
+                    Section("Заказы по статусам") {
                         ForEach(OrderStatus.allCases) { st in
-                            NavigationLink(value: AdminRoute.orders(st)) {
+                            NavigationLink(value: OrdersFilter(status: st)) {
                                 HStack {
                                     StatusBadge(status: st)
                                     Spacer()
@@ -43,23 +45,11 @@ struct AdminHomeView: View {
                 } else {
                     ProgressView().frame(maxWidth: .infinity)
                 }
-                Section("Управление") {
-                    NavigationLink(value: AdminRoute.products) { Label("Товары", systemImage: "tag") }
-                    NavigationLink(value: AdminRoute.settings) { Label("Настройки и реквизиты", systemImage: "gearshape") }
-                    NavigationLink(value: AdminRoute.users) { Label("Пользователи", systemImage: "person.2") }
-                }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("Админка")
-            .navigationDestination(for: AdminRoute.self) { route in
-                switch route {
-                case .orders(let st): AdminOrdersView(status: st)
-                case .products: AdminProductsView()
-                case .settings: AdminSettingsView()
-                case .users: AdminUsersView()
-                }
-            }
-            .navigationDestination(for: Order.self) { AdminOrderDetailView(number: $0.number) }
+            .navigationTitle("Сводка")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { BrandLogo(size: 32) } }
+            .navigationDestination(for: OrdersFilter.self) { AdminOrdersView(status: $0.status) }
             .refreshable { await load() }
             .task { await load() }
         }
@@ -82,9 +72,31 @@ struct AdminHomeView: View {
     }
 }
 
-enum AdminRoute: Hashable {
-    case orders(OrderStatus?)
-    case products, settings, users
+struct OrderRow: View {
+    let order: Order
+
+    var body: some View {
+        HStack(spacing: 12) {
+            RemoteImage(path: order.items.first?.image)
+                .frame(width: 48, height: 60)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("№\(order.number)").fontWeight(.semibold)
+                    Spacer()
+                    Text(Format.rub(order.total)).fontWeight(.semibold).monospacedDigit()
+                }
+                Text("\(order.contactName) · \(order.contactPhone)")
+                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                HStack {
+                    StatusBadge(status: order.status)
+                    Spacer()
+                    Text(Format.dateTime(order.createdAt)).font(.caption).foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
 }
 
 struct AdminOrdersView: View {
@@ -108,7 +120,7 @@ struct AdminOrdersView: View {
             }
             Section {
                 ForEach(orders) { o in
-                    NavigationLink(value: o) { OrderRow(order: o, showContact: true) }
+                    NavigationLink(value: o) { OrderRow(order: o) }
                 }
             } footer: {
                 if !loading { Text("Всего: \(total)") }
@@ -117,6 +129,7 @@ struct AdminOrdersView: View {
         .listStyle(.insetGrouped)
         .overlay { if loading && orders.isEmpty { ProgressView() } }
         .navigationTitle(status?.title ?? "Заказы")
+        .navigationDestination(for: Order.self) { AdminOrderDetailView(number: $0.number) }
         .searchable(text: $query, prompt: "Номер, имя, телефон, почта")
         .refreshable { await load() }
         .task(id: "\(status?.rawValue ?? "")|\(query)") {

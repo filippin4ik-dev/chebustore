@@ -1,7 +1,6 @@
 import Foundation
 import Security
 
-/// Session token storage. Device-only, available after first unlock, never synced to iCloud or included in backups.
 enum Keychain {
     private static let service = "ru.chebustore.app.session"
 

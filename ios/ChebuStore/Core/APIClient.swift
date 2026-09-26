@@ -20,7 +20,6 @@ extension Notification.Name {
     static let sessionExpired = Notification.Name("chebustore.sessionExpired")
 }
 
-/// All requests go to our own HTTPS API; the only credential on the device is the per-session bearer token.
 final class APIClient: @unchecked Sendable {
     static let shared = APIClient()
     private static let tokenAccount = "bearer"
@@ -126,7 +125,6 @@ final class APIClient: @unchecked Sendable {
         return try await perform(req)
     }
 
-    /// Downloads protected binaries (payment receipts) with the bearer token.
     func download(_ path: String) async throws -> (Data, String) {
         let req = makeRequest("GET", path)
         let (data, response) = try await session.data(for: req)

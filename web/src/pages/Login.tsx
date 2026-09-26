@@ -23,7 +23,6 @@ export default function Login() {
   useEffect(() => {
     const redirected = takeTelegramRedirectResult();
     if (redirected) void onTelegram(redirected);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (user) return <Navigate to={next} replace />;
@@ -59,7 +58,7 @@ export default function Login() {
     <>
       <NavBar title="Вход" back />
       <div className="container narrow" style={{ maxWidth: 420 }}>
-        <img className="logo mt-16" src="/logo-192.jpg" alt="chebu store" width={72} height={72} />
+        <img className="logo mt-16" src="/logo-192.jpg" alt="CHEBU" width={72} height={72} />
         <h1 className="large-title">Вход</h1>
         <p className="subhead muted" style={{ marginTop: 0 }}>
           Один аккаунт для сайта, Telegram и приложения на iPhone.

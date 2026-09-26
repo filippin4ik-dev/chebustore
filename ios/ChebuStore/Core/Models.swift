@@ -39,17 +39,6 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
         case .CANCELLED: .red
         }
     }
-
-    var step: Int {
-        switch self {
-        case .AWAITING_PAYMENT, .CANCELLED: 0
-        case .PAYMENT_REVIEW: 1
-        case .ASSEMBLING: 2
-        case .SHIPPED: 3
-        case .READY_FOR_PICKUP: 4
-        case .COMPLETED: 5
-        }
-    }
 }
 
 enum DeliveryMethod: String, Codable, CaseIterable, Identifiable {
@@ -87,74 +76,11 @@ struct User: Codable, Identifiable, Equatable {
     }
 }
 
-struct DeliveryOption: Codable, Hashable {
-    let method: DeliveryMethod
-    let price: Int
-}
-
-struct PublicConfig: Codable {
-    let storeName: String
-    let botUsername: String
-    let supportTelegram: String
-    let supportEmail: String
-    let pickupAddress: String
-    let delivery: [DeliveryOption]
-}
-
-struct Category: Codable, Identifiable, Hashable {
-    let id: String
-    let slug: String
-    let name: String
-}
-
 struct ProductImage: Codable, Identifiable, Hashable {
     let id: String
     let url: String
     let width: Int
     let height: Int
-}
-
-struct Variant: Codable, Identifiable, Hashable {
-    let id: String
-    let size: String
-    let color: String
-    let price: Int
-    let available: Bool
-    let lowStock: Bool
-}
-
-struct Product: Codable, Identifiable, Hashable {
-    let id: String
-    let slug: String
-    let title: String
-    let description: String
-    let category: Category?
-    let price: Int
-    let oldPrice: Int?
-    let images: [ProductImage]
-    let variants: [Variant]
-    let available: Bool
-}
-
-struct CartLine: Codable, Identifiable, Hashable {
-    let id: String
-    let variantId: String
-    let productSlug: String
-    let productTitle: String
-    let size: String
-    let color: String
-    let image: String?
-    let unitPrice: Int
-    let quantity: Int
-    let maxQuantity: Int
-    let purchasable: Bool
-    let issue: String?
-}
-
-struct Cart: Codable {
-    let items: [CartLine]
-    let itemsTotal: Int
-    let count: Int
 }
 
 struct PaymentDetails: Codable, Hashable {
@@ -234,8 +160,6 @@ struct SessionInfo: Codable, Identifiable {
         }
     }
 }
-
-// MARK: - Admin
 
 struct AdminVariant: Codable, Identifiable, Hashable {
     var id: String
@@ -326,15 +250,8 @@ struct AdminOrderDetail: Codable {
     let nextStatuses: [NextStatus]
 }
 
-// MARK: - Response envelopes
-
 struct UserEnvelope: Decodable { let user: User? }
 struct TokenEnvelope: Decodable { let user: User; let token: String }
-struct ProductsEnvelope: Decodable { let products: [Product]; let total: Int; let page: Int; let pageSize: Int }
-struct ProductEnvelope: Decodable { let product: Product }
-struct CategoriesEnvelope: Decodable { let categories: [Category] }
-struct OrdersEnvelope: Decodable { let orders: [Order] }
-struct OrderEnvelope: Decodable { let order: Order }
 struct SessionsEnvelope: Decodable { let sessions: [SessionInfo] }
 struct ResendEnvelope: Decodable { let resendIn: Int }
 struct AdminOrdersEnvelope: Decodable { let orders: [Order]; let total: Int }

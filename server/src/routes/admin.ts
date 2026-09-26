@@ -37,7 +37,6 @@ const kopecks = z.number().int().min(0).max(100_000_000);
 const orderNumber = z.coerce.number().int().positive().max(2_000_000_000);
 
 export default async function adminRoutes(app: FastifyInstance) {
-  // ---------- Dashboard ----------
   app.get("/api/admin/stats", async (req) => {
     requireStaff(req);
     const day = 24 * 60 * 60 * 1000;
@@ -70,7 +69,6 @@ export default async function adminRoutes(app: FastifyInstance) {
     };
   });
 
-  // ---------- Orders ----------
   app.get("/api/admin/orders", async (req) => {
     requireStaff(req);
     const q = parse(
@@ -201,7 +199,6 @@ export default async function adminRoutes(app: FastifyInstance) {
     return sendReceiptFile(reply, receipt);
   });
 
-  // ---------- Categories ----------
   app.get("/api/admin/categories", async (req) => {
     requireStaff(req);
     const categories = await prisma.category.findMany({
@@ -257,7 +254,6 @@ export default async function adminRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  // ---------- Products ----------
   app.get("/api/admin/products", async (req) => {
     requireStaff(req);
     const q = parse(z.object({ q: z.string().trim().max(80).optional() }), req.query);
@@ -430,7 +426,6 @@ export default async function adminRoutes(app: FastifyInstance) {
     return { product: serializeProductAdmin(updated) };
   });
 
-  // ---------- Settings ----------
   app.get("/api/admin/settings", async (req) => {
     const actor = requireStaff(req);
     const [payment, store] = await Promise.all([getPaymentSettings(), getStoreSettings()]);
@@ -453,7 +448,6 @@ export default async function adminRoutes(app: FastifyInstance) {
     return { store: body };
   });
 
-  // ---------- Users ----------
   app.get("/api/admin/users", async (req) => {
     requireStaff(req);
     const q = parse(
@@ -517,7 +511,6 @@ export default async function adminRoutes(app: FastifyInstance) {
     return { user: { ...publicUser(updated), isBlocked: updated.isBlocked } };
   });
 
-  // ---------- Audit ----------
   app.get("/api/admin/audit", async (req) => {
     requireAdmin(req);
     const q = parse(z.object({ page: z.coerce.number().int().min(1).max(1000).default(1) }), req.query);

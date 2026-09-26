@@ -26,7 +26,6 @@ declare global {
 
 const FLAG = "cs_tg_miniapp";
 
-/** Telegram passes launch params in the URL hash; remember it so in-app reloads stay in mini-app mode. */
 function launchedFromTelegram() {
   if (location.hash.includes("tgWebAppData") || location.search.includes("tgWebAppStartParam")) {
     sessionStorage.setItem(FLAG, "1");
@@ -59,7 +58,7 @@ export async function initTelegram(): Promise<TgWebApp | null> {
       app.setHeaderColor(bg);
       app.setBackgroundColor(bg);
     } catch {
-      /* older clients */
+      return;
     }
   };
   applyTheme();

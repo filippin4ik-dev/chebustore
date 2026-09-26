@@ -26,18 +26,7 @@ enum Format {
         return Int((v * 100).rounded())
     }
 
-    static func date(_ d: Date) -> String {
-        d.formatted(.dateTime.day().month(.wide).locale(Locale(identifier: "ru_RU")))
-    }
-
     static func dateTime(_ d: Date) -> String {
         d.formatted(.dateTime.day().month(.abbreviated).hour().minute().locale(Locale(identifier: "ru_RU")))
-    }
-
-    static func timeLeft(_ d: Date) -> String {
-        let s = Int(d.timeIntervalSinceNow)
-        if s <= 0 { return "срок истёк" }
-        let h = s / 3600, m = (s % 3600) / 60
-        return h > 0 ? "\(h) ч \(m) мин" : "\(m) мин"
     }
 }

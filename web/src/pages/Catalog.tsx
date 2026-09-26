@@ -54,7 +54,6 @@ export default function Catalog() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, sort, q]);
 
   useEffect(() => {
@@ -65,7 +64,6 @@ export default function Catalog() {
       if (next.toString() !== params.toString()) setParams(next, { replace: true });
     }, 350);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
   const setParam = (key: string, value: string) => {
@@ -89,7 +87,7 @@ export default function Catalog() {
   return (
     <div className="container">
       <div className="brand-title">
-        <h1 className="large-title">{config?.storeName ?? "chebu store"}</h1>
+        <h1 className="large-title">{config?.storeName ?? "CHEBU"}</h1>
         <img className="logo" src="/logo-192.jpg" alt="" width={40} height={40} />
       </div>
       <label className="search">

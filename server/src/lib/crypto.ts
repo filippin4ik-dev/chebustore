@@ -9,7 +9,6 @@ export function sha256(input: string | Buffer): string {
   return createHash("sha256").update(input).digest("hex");
 }
 
-/** Keyed hash for values stored in DB (session tokens, one-time codes). */
 export function keyedHash(purpose: string, value: string): string {
   return createHmac("sha256", config.SERVER_SECRET).update(`${purpose}:${value}`).digest("hex");
 }

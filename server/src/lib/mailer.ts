@@ -20,7 +20,7 @@ const escapeHtml = (s: string) =>
 function layout(title: string, body: string) {
   return `<!doctype html><html><body style="margin:0;background:#f2f2f7;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;color:#1c1c1e">
 <div style="max-width:480px;margin:0 auto;padding:32px 20px">
-<div style="font-weight:700;font-size:17px;line-height:32px"><img src="${config.PUBLIC_URL}/logo-192.jpg" width="32" height="32" alt="" style="border-radius:50%;vertical-align:middle;margin-right:10px">chebu store</div>
+<div style="font-weight:700;font-size:17px;line-height:32px"><img src="${config.PUBLIC_URL}/logo-192.jpg" width="32" height="32" alt="" style="border-radius:50%;vertical-align:middle;margin-right:10px">CHEBU</div>
 <div style="background:#fff;border-radius:14px;padding:24px;margin-top:16px">
 <div style="font-size:20px;font-weight:600;margin-bottom:12px">${escapeHtml(title)}</div>
 ${body}
@@ -46,7 +46,7 @@ export async function sendLoginCode(to: string, code: string) {
     "Код для входа",
     `<div style="font-size:34px;font-weight:700;letter-spacing:.3em;margin:8px 0 16px">${code}</div>
 <div style="font-size:15px;color:#3a3a3c">Код действует ${config.emailCodeTtlMin} минут. Если вы не запрашивали вход — просто проигнорируйте письмо, никто не получит доступ без этого кода.</div>`,
-    `Код для входа в chebu store: ${code}\nДействует ${config.emailCodeTtlMin} минут. Никому его не сообщайте.`,
+    `Код для входа в CHEBU: ${code}\nДействует ${config.emailCodeTtlMin} минут. Никому его не сообщайте.`,
   );
 }
 

@@ -8,7 +8,6 @@ declare global {
   }
 }
 
-/** On mobile browsers Telegram may redirect back with the signed payload in `#tgAuthResult=<base64 JSON>`. */
 export function takeTelegramRedirectResult(): TelegramAuthData | null {
   const m = location.hash.match(/tgAuthResult=([A-Za-z0-9_\-+/=]+)/);
   if (!m) return null;
@@ -22,7 +21,6 @@ export function takeTelegramRedirectResult(): TelegramAuthData | null {
   }
 }
 
-/** Official Telegram Login Widget. Requires the domain to be set for the bot via @BotFather → /setdomain. */
 export function TelegramLogin({ botUsername, onAuth }: { botUsername: string; onAuth(data: TelegramAuthData): void }) {
   const ref = useRef<HTMLDivElement>(null);
   const cb = useRef(onAuth);

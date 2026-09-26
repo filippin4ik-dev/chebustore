@@ -11,7 +11,7 @@ struct BrandLogo: View {
             .frame(width: size, height: size)
             .clipShape(Circle())
             .overlay(Circle().strokeBorder(.separator, lineWidth: 0.5))
-            .accessibilityLabel("chebu store")
+            .accessibilityLabel("CHEBU")
     }
 }
 
@@ -39,7 +39,6 @@ struct RemoteImage: View {
     }
 }
 
-/// Receipt image loaded with the bearer token (never cached on disk).
 struct ProtectedImage: View {
     let path: String
     @State private var image: UIImage?
@@ -82,19 +81,6 @@ struct StatusBadge: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
         .background(status.color.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
-    }
-}
-
-struct PriceText: View {
-    let price: Int
-    var oldPrice: Int?
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(Format.rub(price)).fontWeight(.semibold).monospacedDigit()
-            if let oldPrice, oldPrice > price {
-                Text(Format.rub(oldPrice)).strikethrough().foregroundStyle(.secondary)
-            }
-        }
     }
 }
 

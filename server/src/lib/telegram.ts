@@ -21,10 +21,6 @@ function checkAge(authDate: number, maxAgeSec: number, now: number) {
   return age <= maxAgeSec && age >= -60;
 }
 
-/**
- * Telegram Login Widget: https://core.telegram.org/widgets/login#checking-authorization
- * secret = SHA256(bot_token), hash = HMAC_SHA256(data_check_string, secret)
- */
 export function verifyLoginWidget(
   data: Record<string, unknown>,
   botToken: string,
@@ -60,10 +56,6 @@ export function verifyLoginWidget(
   };
 }
 
-/**
- * Telegram Mini App initData: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
- * secret = HMAC_SHA256(bot_token, key="WebAppData"), hash = HMAC_SHA256(data_check_string, secret)
- */
 export function verifyWebAppInitData(
   initData: string,
   botToken: string,

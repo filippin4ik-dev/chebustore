@@ -36,7 +36,6 @@ const safeName = (name: string) => {
   return name;
 };
 
-/** Re-encodes an uploaded image: strips metadata/EXIF, normalises orientation, neutralises polyglot payloads. */
 async function reencode(buf: Buffer, maxSide: number, quality: number) {
   const img = sharp(buf, { limitInputPixels: 60_000_000, failOn: "error" }).rotate();
   const out = await img

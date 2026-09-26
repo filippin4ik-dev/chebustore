@@ -147,7 +147,6 @@ export function CopyValue({ label, value, display }: { label: string; value: str
   );
 }
 
-/** Loads a protected image via the API client (cookie or bearer) and renders it. */
 export function AuthImage({ path, alt, className }: { path: string; alt: string; className?: string }) {
   const [src, setSrc] = useState<{ url: string; type: string } | null>(null);
   const [failed, setFailed] = useState(false);
@@ -195,7 +194,6 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => void reload(), deps);
   return { data, setData, error, loading, reload };
 }

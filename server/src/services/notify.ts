@@ -110,7 +110,7 @@ export async function notifyNewLogin(user: User, method: string, userAgent: stri
   await safeSend(user.telegramId, (id) =>
     bot.api.sendMessage(
       id,
-      `🔐 Вход в аккаунт chebu store (${esc(method)})\n${when} МСК\n${esc(userAgent.slice(0, 120))}\n\nЕсли это были не вы — откройте Профиль → Устройства и завершите все сеансы.`,
+      `🔐 Вход в аккаунт CHEBU (${esc(method)})\n${when} МСК\n${esc(userAgent.slice(0, 120))}\n\nЕсли это были не вы — откройте Профиль → Устройства и завершите все сеансы.`,
     ),
   );
 }

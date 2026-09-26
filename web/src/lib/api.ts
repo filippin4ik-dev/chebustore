@@ -8,7 +8,6 @@ export class ApiError extends Error {
   }
 }
 
-// Mini-app bearer token lives only in memory: it is re-issued from Telegram initData on every launch.
 let bearer: string | null = null;
 let onUnauthorized: (() => Promise<boolean>) | null = null;
 
@@ -56,7 +55,6 @@ export const api = {
     fd.append("file", file);
     return request<T>("POST", path, fd);
   },
-  /** Fetches a protected binary (receipts) with auth headers and returns an object URL. */
   async blobUrl(path: string): Promise<{ url: string; type: string }> {
     const res = await fetch(`/api${path}`, { credentials: "same-origin", headers: headers() });
     if (!res.ok) throw new ApiError("Не удалось загрузить файл", "file", res.status);

@@ -120,8 +120,6 @@ img {
   max-width: 100%;
 }
 
-/* ---------- Layout ---------- */
-
 .app {
   min-height: 100dvh;
   padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 16px);
@@ -270,8 +268,6 @@ img {
   margin-top: 24px;
 }
 
-/* ---------- Tab bar ---------- */
-
 .tabbar {
   position: fixed;
   left: 0;
@@ -325,8 +321,6 @@ img {
   line-height: 18px;
   text-align: center;
 }
-
-/* ---------- Grouped lists ---------- */
 
 .section {
   margin: 24px 0 0;
@@ -434,8 +428,6 @@ button.cell:active {
   height: 40px;
   border-radius: 8px;
 }
-
-/* ---------- Forms ---------- */
 
 .field {
   display: flex;
@@ -568,8 +560,6 @@ button.cell:active {
   transform: translateX(20px);
 }
 
-/* ---------- Buttons ---------- */
-
 .btn {
   display: inline-flex;
   align-items: center;
@@ -667,8 +657,6 @@ button.cell:active {
   height: 88px;
 }
 
-/* ---------- Chips / segmented ---------- */
-
 .chips {
   display: flex;
   gap: 8px;
@@ -737,8 +725,6 @@ button.cell:active {
 :root[data-theme="dark"] .segmented button.active {
   background: #636366;
 }
-
-/* ---------- Product grid ---------- */
 
 .grid {
   display: grid;
@@ -816,8 +802,6 @@ button.cell:active {
   justify-content: center;
   color: var(--label-3);
 }
-
-/* ---------- Product page ---------- */
 
 .gallery {
   display: flex;
@@ -912,8 +896,6 @@ button.cell:active {
   letter-spacing: -0.24px;
 }
 
-/* ---------- Stepper ---------- */
-
 .stepper {
   display: inline-flex;
   align-items: center;
@@ -940,8 +922,6 @@ button.cell:active {
   font-variant-numeric: tabular-nums;
   font-weight: 500;
 }
-
-/* ---------- Status ---------- */
 
 .badge {
   display: inline-flex;
@@ -1065,8 +1045,6 @@ button.cell:active {
   letter-spacing: 0.02em;
 }
 
-/* ---------- Sheet / modal ---------- */
-
 .backdrop {
   position: fixed;
   inset: 0;
@@ -1128,8 +1106,6 @@ button.cell:active {
   }
 }
 
-/* ---------- Toast ---------- */
-
 .toast {
   position: fixed;
   left: 50%;
@@ -1157,8 +1133,6 @@ button.cell:active {
     opacity: 0;
   }
 }
-
-/* ---------- Misc ---------- */
 
 .spinner {
   width: 22px;
@@ -1287,8 +1261,6 @@ button.cell:active {
   flex: 1;
   border-top: 0.5px solid var(--separator);
 }
-
-/* ---------- Admin ---------- */
 
 .admin-shell {
   display: grid;

@@ -33,7 +33,6 @@ export interface TransitionInput {
   data?: Prisma.OrderUpdateInput;
 }
 
-/** Atomically moves an order to a new status; returns the updated order and the previous status. */
 export async function transition({ orderId, to, actorId, note = "", data = {} }: TransitionInput) {
   return prisma.$transaction(async (tx) => {
     const current = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true } });

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { config } from "../config.js";
 import { prisma } from "../db.js";
 import { keyedHash, numericCode, pkceChallenge, randomToken, safeEqualHex } from "../lib/crypto.js";
-import { badRequest, conflict, tooMany, unauthorized } from "../lib/errors.js";
+import { badRequest, conflict, forbidden, tooMany, unauthorized } from "../lib/errors.js";
 import { sendLoginCode } from "../lib/mailer.js";
 import { verifyLoginWidget, verifyWebAppInitData, type TelegramIdentity } from "../lib/telegram.js";
 import { parse } from "../lib/validate.js";
@@ -13,6 +13,7 @@ import { notifyNewLogin } from "../services/notify.js";
 import {
   clearSessionCookie,
   createSession,
+  isStaff,
   publicUser,
   revokeAllSessions,
   setSessionCookie,
@@ -25,7 +26,10 @@ const strictLimit = (max: number, minutes: number) => ({
   config: { rateLimit: { max, timeWindow: `${minutes} minutes` } },
 });
 
+const staffOnly = () => forbidden("Приложение CHEBU только для сотрудников магазина", "staff_only");
+
 async function issueSession(req: FastifyRequest, reply: FastifyReply, user: User, client: SessionClient) {
+  if (client === "IOS" && !isStaff(user.role)) throw staffOnly();
   const { token, expiresAt } = await createSession(user, client, req);
   if (client === "WEB") {
     setSessionCookie(reply, token, expiresAt);
@@ -95,7 +99,6 @@ export default async function authRoutes(app: FastifyInstance) {
     if (today >= config.emailCodeDailyLimit) throw tooMany("Лимит писем на сегодня исчерпан");
 
     const existing = await prisma.user.findUnique({ where: { email }, select: { isBlocked: true } });
-    // Blocked accounts get the same response to avoid account enumeration, but no email is sent.
     if (existing?.isBlocked) return { ok: true, resendIn: config.emailCodeResendSec };
 
     const code = numericCode(6);
@@ -144,10 +147,9 @@ export default async function authRoutes(app: FastifyInstance) {
     return issueSession(req, reply, user, "MINIAPP");
   });
 
-  // iOS: ASWebAuthenticationSession opens /auth/app, the page signs in and asks for a one-time code
-  // bound to the app's PKCE challenge; the app then exchanges code + verifier for a bearer token.
   app.post("/api/auth/app/code", strictLimit(10, 10), async (req, reply) => {
     const user = requireUser(req);
+    if (!isStaff(user.role)) throw staffOnly();
     const body = parse(
       z.object({
         challenge: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
@@ -201,8 +203,6 @@ export default async function authRoutes(app: FastifyInstance) {
     clearSessionCookie(reply);
     return { ok: true };
   });
-
-  // ---- Account management ----
 
   app.get("/api/account/sessions", async (req) => {
     const user = requireUser(req);

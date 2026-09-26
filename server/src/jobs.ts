@@ -18,7 +18,6 @@ async function expireUnpaidOrders() {
       });
       void notifyStatus(order, "Срок оплаты истёк, товары вернулись в продажу.");
     } catch {
-      // Status changed concurrently (e.g. receipt just uploaded) — skip.
     }
   }
 }

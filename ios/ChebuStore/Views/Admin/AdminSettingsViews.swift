@@ -1,5 +1,98 @@
 import SwiftUI
 
+struct AdminMoreView: View {
+    @Environment(AuthStore.self) private var auth
+    @State private var confirmLogout = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let user = auth.user {
+                    Section {
+                        HStack(spacing: 14) {
+                            BrandLogo(size: 52)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(user.displayName).font(.title3.weight(.semibold))
+                                Text(user.role.title).font(.subheadline).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                Section("Управление") {
+                    NavigationLink { AdminSettingsView() } label: { Label("Магазин и реквизиты", systemImage: "gearshape") }
+                    NavigationLink { AdminUsersView() } label: { Label("Пользователи", systemImage: "person.2") }
+                }
+                Section("Безопасность") {
+                    NavigationLink { SessionsView() } label: { Label("Устройства и сеансы", systemImage: "lock.shield") }
+                }
+                Section {
+                    Link(destination: AppConfig.baseURL) { Label("Открыть сайт", systemImage: "safari") }
+                }
+                Section {
+                    Button("Выйти", role: .destructive) { confirmLogout = true }.frame(maxWidth: .infinity)
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("Ещё")
+            .confirmationDialog("Выйти из аккаунта?", isPresented: $confirmLogout, titleVisibility: .visible) {
+                Button("Выйти", role: .destructive) { Task { await auth.logout() } }
+            }
+        }
+    }
+}
+
+struct SessionsView: View {
+    @State private var sessions: [SessionInfo] = []
+    @State private var error: String?
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(sessions) { s in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(s.title + (s.current ? " · это устройство" : ""))
+                        Text("Активность \(Format.dateTime(s.lastSeenAt))\(s.ip.map { " · \($0)" } ?? "")")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    .swipeActions {
+                        if !s.current {
+                            Button("Завершить", role: .destructive) { Task { await revoke(s.id) } }
+                        }
+                    }
+                }
+            } footer: {
+                Text("Если видите незнакомое устройство — завершите его сеанс.")
+            }
+            if sessions.count > 1 {
+                Section {
+                    Button("Завершить все другие сеансы", role: .destructive) { Task { await revokeOthers() } }
+                }
+            }
+        }
+        .navigationTitle("Устройства")
+        .task { await load() }
+        .refreshable { await load() }
+        .errorAlert($error)
+    }
+
+    private func load() async {
+        do {
+            let r: SessionsEnvelope = try await APIClient.shared.get("/account/sessions")
+            sessions = r.sessions
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func revoke(_ id: String) async {
+        let _: OK? = try? await APIClient.shared.delete("/account/sessions/\(id)")
+        await load()
+    }
+
+    private func revokeOthers() async {
+        let _: OK? = try? await APIClient.shared.post("/account/sessions/revoke-others")
+        await load()
+    }
+}
+
 struct AdminSettingsView: View {
     @Environment(AuthStore.self) private var auth
     @State private var store: StoreSettings?

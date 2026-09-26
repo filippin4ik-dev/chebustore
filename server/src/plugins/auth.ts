@@ -35,14 +35,15 @@ export default fp(async function authPlugin(app: FastifyInstance) {
     if (header?.startsWith("Bearer ")) {
       const s = await resolveSession(header.slice(7).trim());
       if (!s) throw unauthorized("Сессия истекла, войдите снова", "session_expired");
+      if (s.client === "IOS" && s.user.role !== "ADMIN" && s.user.role !== "MANAGER") {
+        throw unauthorized("Приложение CHEBU только для сотрудников магазина", "staff_only");
+      }
       req.auth = { user: s.user, session: s, via: "bearer" };
       return;
     }
 
     const cookie = req.cookies[config.sessionCookie];
     if (UNSAFE.has(req.method) && req.url.startsWith("/api/") && !req.url.startsWith("/api/telegram/")) {
-      // Cookie-authenticated or not, every state-changing browser request must come from our origin
-      // and carry a custom header (forces a CORS preflight that other origins cannot pass).
       if (cookie || req.headers.origin) {
         if (!originAllowed(req) || req.headers["x-cs-csrf"] !== "1") {
           throw new HttpError(403, "csrf", "Запрос отклонён политикой безопасности");

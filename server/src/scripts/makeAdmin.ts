@@ -1,6 +1,5 @@
 import { PrismaClient } from "@prisma/client";
 
-// Usage: node dist/scripts/makeAdmin.js <email | telegram_id> [ADMIN|MANAGER|CUSTOMER]
 const prisma = new PrismaClient();
 
 async function main() {
