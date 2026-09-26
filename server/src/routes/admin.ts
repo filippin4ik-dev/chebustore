@@ -1,3 +1,9 @@
+import { randomBytes } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { pipeline } from "node:stream/promises";
 import type { FastifyInstance } from "fastify";
 import { Prisma, type OrderStatus } from "@prisma/client";
 import { z } from "zod";
@@ -25,7 +31,7 @@ import {
 } from "../lib/settings.js";
 import { parse } from "../lib/validate.js";
 import { requireAdmin, requireStaff } from "../plugins/auth.js";
-import { historyStatus, startHistoryImport } from "../services/channelImport.js";
+import { startExportImport, startHistoryImport, visibleHistory } from "../services/channelImport.js";
 import { beginTelegramLogin, finishTelegramLogin } from "../services/telegramUser.js";
 import { productInclude, serializeProductAdmin, slugify, uniqueSlug } from "../services/catalog.js";
 import { notifyStatus } from "../services/notify.js";
@@ -629,10 +635,35 @@ export default async function adminRoutes(app: FastifyInstance) {
     return { already: started.already, progress: started.progress };
   });
 
+  app.post("/api/admin/settings/import/export", async (req) => {
+    const actor = requireAdmin(req);
+    const current = await getImportSettings();
+    const file = await req.file({ limits: { fileSize: 400 * 1024 * 1024, files: 1 }, throwFileSizeLimit: true });
+    if (!file) throw badRequest("Прикрепите zip-архив выгрузки");
+    if (!file.filename.toLowerCase().endsWith(".zip")) {
+      file.file.resume();
+      throw badRequest("Нужен zip-архив папки выгрузки");
+    }
+    const dest = path.join(tmpdir(), `chebu-export-${randomBytes(8).toString("hex")}.zip`);
+    try {
+      await pipeline(file.file, createWriteStream(dest));
+    } catch {
+      await unlink(dest).catch(() => undefined);
+      throw badRequest("Не удалось принять архив");
+    }
+    if (file.file.truncated) {
+      await unlink(dest).catch(() => undefined);
+      throw badRequest("Архив больше 400 МБ. При выгрузке отключите видео, кружки и голосовые");
+    }
+    const started = await startExportImport(dest, current.channelId);
+    await audit(actor.id, "import.export", "setting", "import", { channelId: current.channelId }, req.ip);
+    return { already: started.already, progress: started.progress };
+  });
+
   app.get("/api/admin/settings/import/history", async (req) => {
     requireAdmin(req);
     const current = await getImportSettings();
-    return { progress: current.channelId ? historyStatus(current.channelId) : null, hasSession: Boolean(current.mtSessionSeal) };
+    return { progress: visibleHistory(current.channelId), hasSession: Boolean(current.mtSessionSeal) };
   });
 
   app.post("/api/admin/settings/welcome-photo", async (req) => {

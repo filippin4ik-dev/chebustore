@@ -1,9 +1,12 @@
+import { unlink } from "node:fs/promises";
 import type { Product } from "@prisma/client";
 import { InlineKeyboard } from "grammy";
 import { bot } from "../bot/instance.js";
 import { config } from "../config.js";
 import { prisma } from "../db.js";
 import { audit } from "../lib/audit.js";
+import { badRequest } from "../lib/errors.js";
+import { openTelegramExport } from "./telegramExport.js";
 import { deleteProductImage, saveProductImage } from "../lib/files.js";
 import { publish } from "../lib/live.js";
 import { parsePost, type ParsedPost } from "../lib/postParser.js";
@@ -221,6 +224,14 @@ export function historyStatus(channelId: string) {
   return historyJobs.get(channelId) ?? null;
 }
 
+export function visibleHistory(channelId: string) {
+  const named = channelId ? historyJobs.get(channelId) : undefined;
+  const exported = historyJobs.get("export");
+  if (named?.running) return named;
+  if (exported?.running) return exported ?? null;
+  return named ?? exported ?? null;
+}
+
 export async function startHistoryImport(channelId: string, apiId: number, apiHash: string, session: string) {
   const current = historyJobs.get(channelId);
   if (current?.running) return { already: true as const, progress: current };
@@ -286,5 +297,72 @@ async function runHistory(channelId: string, apiId: number, apiHash: string, ses
   } finally {
     progress.running = false;
     await client.disconnect().catch(() => undefined);
+  }
+}
+
+export async function startExportImport(zipPath: string, savedChannelId: string) {
+  const key = savedChannelId || "export";
+  const current = historyJobs.get(key);
+  if (current?.running) {
+    await unlink(zipPath).catch(() => undefined);
+    return { already: true as const, progress: current };
+  }
+  const exp = await openTelegramExport(zipPath).catch(async (e: unknown) => {
+    await unlink(zipPath).catch(() => undefined);
+    throw e;
+  });
+  if (savedChannelId.startsWith("-100") && exp.channelId && savedChannelId !== exp.channelId) {
+    exp.close();
+    await unlink(zipPath).catch(() => undefined);
+    throw badRequest("Это выгрузка другого канала");
+  }
+  const sourceChat = savedChannelId.startsWith("-100") ? savedChannelId : exp.channelId;
+  if (!sourceChat) {
+    exp.close();
+    await unlink(zipPath).catch(() => undefined);
+    throw badRequest("В выгрузке нет id канала. Сначала сохраните канал в настройках импорта");
+  }
+  const progress: HistoryProgress = { running: true, scanned: 0, created: 0, updated: 0, skipped: 0, error: "" };
+  historyJobs.set(key, progress);
+  historyJobs.set("export", progress);
+  void runExport(exp, sourceChat, progress, zipPath);
+  return { already: false as const, progress };
+}
+
+async function runExport(
+  exp: Awaited<ReturnType<typeof openTelegramExport>>,
+  sourceChat: string,
+  progress: HistoryProgress,
+  zipPath: string,
+) {
+  try {
+    for (const group of exp.groups) {
+      const photos = new Map<string, Buffer>();
+      const parts: ImportPart[] = [];
+      for (const message of group) {
+        let file: string | undefined;
+        if (message.photo) {
+          const buf = await exp.photo(message.photo);
+          if (buf?.length && buf.length <= MAX_FILE) {
+            file = `buf:${message.id}`;
+            photos.set(file, buf);
+          }
+        }
+        parts.push({ sourceChat, messageId: message.id, text: message.text, photo: file });
+      }
+      const result = await serial(() => importPost(parts, true, photos)).catch(
+        (e): ImportResult => ({ status: "skipped", reason: (e as Error).message }),
+      );
+      progress.scanned++;
+      if (result.status === "created") progress.created++;
+      else if (result.status === "updated" || result.status === "sold") progress.updated++;
+      else progress.skipped++;
+    }
+  } catch (e) {
+    progress.error = (e as Error).message.slice(0, 300);
+  } finally {
+    progress.running = false;
+    exp.close();
+    await unlink(zipPath).catch(() => undefined);
   }
 }

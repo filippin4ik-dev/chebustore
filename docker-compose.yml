@@ -41,7 +41,8 @@ services:
         condition: service_healthy
     networks: [backend, edge]
     read_only: true
-    tmpfs: [/tmp]
+    tmpfs:
+      - /tmp:size=1g
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
 

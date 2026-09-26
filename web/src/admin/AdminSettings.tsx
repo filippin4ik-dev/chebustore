@@ -185,6 +185,23 @@ export default function AdminSettings() {
     }
   };
 
+  const uploadExport = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      toast("Нужен zip-архив папки выгрузки", true);
+      return;
+    }
+    setSaving("import");
+    try {
+      const r = await api.upload<{ already: boolean }>("/admin/settings/import/export", file);
+      setHistoryText(r.already ? "Загрузка уже идёт" : "Выгрузка принята, посты добавляются");
+      watchHistory();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Ошибка", true);
+    } finally {
+      setSaving(null);
+    }
+  };
+
   const loadHistoryAgain = async () => {
     setSaving("import");
     try {
@@ -696,6 +713,19 @@ export default function AdminSettings() {
           <div className="section">
             <div className="section-header">Старые посты</div>
             <div className="list">
+              <div className="field">
+                <label>Архив выгрузки</label>
+                <input
+                  type="file"
+                  accept=".zip,application/zip"
+                  disabled={saving !== null}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) void uploadExport(file);
+                  }}
+                />
+              </div>
               {!loginId && (
                 <>
                   <div className="field">
@@ -750,7 +780,7 @@ export default function AdminSettings() {
             </div>
             {historyText && <div className="section-footer">{historyText}</div>}
             <div className="section-footer">
-              Бот видит только новые посты. Чтобы забрать старые, один раз войдите своим аккаунтом. api_id и api_hash берутся на my.telegram.org → API development tools. Сессия хранится только на сервере, в браузер не возвращается.
+              Бот видит только новые посты. Старые заберите без my.telegram.org: Telegram Desktop → канал → три точки → Export chat history → формат JSON, без видео и голосовых. Папку выгрузки сожмите в zip и выберите её выше. Поля api_id ниже нужны, только если сайт Telegram всё-таки выдал ключи.
             </div>
           </div>
           {!loginId ? (
