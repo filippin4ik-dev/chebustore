@@ -165,6 +165,7 @@ struct AdminSettingsView: View {
     @State private var apnsBundle = "ru.chebustore.app"
     @State private var apnsKey = ""
     @State private var welcomeItem: PhotosPickerItem?
+    @State private var scatterText = ""
 
     private var isAdmin: Bool { auth.user?.role == .ADMIN }
     private var banks: [Bank] { auth.config?.banks ?? [] }
@@ -364,6 +365,17 @@ struct AdminSettingsView: View {
                     }
                 }
 
+                if isAdmin {
+                    Section {
+                        Button("Раскидать по категориям") { Task { await scatter() } }
+                        NavigationLink("Рассылка в боте") { AdminBroadcastView() }
+                    } header: {
+                        Text("Каталог и рассылка")
+                    } footer: {
+                        Text(scatterText.isEmpty ? "Кнопка создаёт категории по типу одежды и раскладывает товары. Рассылка уходит в Telegram тем, кто открывал бота." : scatterText)
+                    }
+                }
+
                 if isAdmin, imp != nil {
                     Section {
                         Toggle("Добавлять товары из канала", isOn: Binding(get: { self.imp?.enabled ?? false }, set: { self.imp?.enabled = $0 }))
@@ -419,6 +431,16 @@ struct AdminSettingsView: View {
             parts.append("Фон тёмной темы слишком светлый — выберите цвет темнее.")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+
+    private func scatter() async {
+        do {
+            struct Result: Decodable { let created: [String]; let moved: Int; let skipped: Int; let unchanged: Int }
+            let r: Result = try await APIClient.shared.post("/admin/categories/scatter")
+            let made = r.created.isEmpty ? "" : " Новые: \(r.created.joined(separator: ", "))."
+            scatterText = "Разложено \(r.moved), уже на месте \(r.unchanged), без типа \(r.skipped).\(made)"
+            saved.toggle()
+        } catch { self.error = error.localizedDescription }
     }
 
     private func load() async {

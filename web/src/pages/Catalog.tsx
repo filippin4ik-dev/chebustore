@@ -19,7 +19,7 @@ export default function Catalog() {
   const { config } = useAuth();
   const [params, setParams] = useSearchParams();
   const category = params.get("c") ?? "";
-  const sort = params.get("sort") ?? "new";
+  const sort = params.get("sort") ?? "smart";
   const [query, setQuery] = useState(params.get("q") ?? "");
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[] | null>(null);
@@ -131,10 +131,11 @@ export default function Catalog() {
         <select
           className="footnote"
           value={sort}
-          onChange={(e) => setParam("sort", e.target.value === "new" ? "" : e.target.value)}
+          onChange={(e) => setParam("sort", e.target.value === "smart" ? "" : e.target.value)}
           style={{ border: 0, background: "transparent", color: "var(--blue)", fontSize: 13 }}
           aria-label="Сортировка"
         >
+          <option value="smart">Сначала в наличии</option>
           <option value="new">Сначала новые</option>
           <option value="price_asc">Сначала дешевле</option>
           <option value="price_desc">Сначала дороже</option>

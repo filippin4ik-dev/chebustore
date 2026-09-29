@@ -23,6 +23,7 @@ const AdminCategories = lazy(() => import("./admin/AdminCategories"));
 const AdminSettings = lazy(() => import("./admin/AdminSettings"));
 const AdminUsers = lazy(() => import("./admin/AdminUsers"));
 const AdminAudit = lazy(() => import("./admin/AdminAudit"));
+const AdminBroadcast = lazy(() => import("./admin/AdminBroadcast"));
 
 function Shell() {
   const { ready } = useAuth();
@@ -47,6 +48,7 @@ function Shell() {
           <Route path="products" element={<AdminProducts />} />
           <Route path="products/:id" element={<AdminProductEdit />} />
           <Route path="categories" element={<AdminCategories />} />
+          <Route path="broadcast" element={<AdminBroadcast />} />
           <Route path="settings" element={<AdminSettings />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="audit" element={<AdminAudit />} />

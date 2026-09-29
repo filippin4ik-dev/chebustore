@@ -29,6 +29,8 @@ const ACTIONS: Record<string, string> = {
   "category.create": "Создал категорию",
   "category.update": "Изменил категорию",
   "category.delete": "Удалил категорию",
+  "category.scatter": "Разложил товары по категориям",
+  "broadcast.send": "Запустил рассылку",
   "settings.payment": "Изменил реквизиты оплаты",
   "settings.store": "Изменил настройки магазина",
   "user.update": "Изменил пользователя",

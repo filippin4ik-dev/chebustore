@@ -26,7 +26,7 @@ export default function AdminSettings() {
   const [payment, setPayment] = useState<PaymentSettings | null>(null);
   const [prices, setPrices] = useState<Record<DeliveryMethod, string>>({ CDEK: "", RUSSIAN_POST: "", HAND: "" });
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState<"store" | "payment" | "import" | "photo" | "apns" | null>(null);
+  const [saving, setSaving] = useState<"store" | "payment" | "import" | "photo" | "apns" | "scatter" | null>(null);
   const [imp, setImp] = useState<ImportSettings | null>(null);
   const [channel, setChannel] = useState("");
   const [history, setHistory] = useState({ apiId: "", apiHash: "", phone: "", code: "", password: "" });
@@ -101,6 +101,19 @@ export default function AdminSettings() {
       const r = await api.put<{ payment: PaymentSettings }>("/admin/settings/payment", payment);
       setPayment(r.payment);
       toast("Реквизиты сохранены. Новые заказы получат их автоматически.");
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Ошибка", true);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const scatterCategories = async () => {
+    setSaving("scatter");
+    try {
+      const r = await api.post<{ created: string[]; moved: number; skipped: number; unchanged: number }>("/admin/categories/scatter");
+      const made = r.created.length ? ` Новые категории: ${r.created.join(", ")}.` : "";
+      toast(`Разложено ${r.moved}, уже на месте ${r.unchanged}, без типа ${r.skipped}.${made}`);
     } catch (e) {
       toast(e instanceof ApiError ? e.message : "Ошибка", true);
     } finally {
@@ -654,6 +667,20 @@ export default function AdminSettings() {
               )}
             </>
           )}
+        </>
+      )}
+
+      {isAdmin && (
+        <>
+          <div className="section">
+            <div className="section-header">Категории</div>
+            <div className="section-footer">
+              Кнопка смотрит название и описание и раскладывает товары: джинсы, худи, куртки, обувь и остальные типы. Недостающие категории создаются сами. То, что не удалось узнать, остаётся на месте.
+            </div>
+          </div>
+          <button className="btn block" onClick={scatterCategories} disabled={saving !== null}>
+            {saving === "scatter" ? <Spinner /> : "Раскидать по категориям"}
+          </button>
         </>
       )}
 

@@ -59,11 +59,14 @@ model User {
   updatedAt        DateTime  @updatedAt
   lastLoginAt      DateTime?
 
+  marketingOptOut Boolean   @default(false)
+
   sessions    Session[]
   cartItems   CartItem[]
   orders      Order[]
   auditLogs   AuditLog[]
   pushDevices PushDevice[]
+  broadcasts  Broadcast[]
 }
 
 model Session {
@@ -258,6 +261,26 @@ model PaymentReceipt {
   note       String    @default("")
 
   @@index([orderId, createdAt])
+}
+
+model Broadcast {
+  id           String    @id @default(cuid())
+  text         String
+  photo        String    @default("")
+  buttonKind   String    @default("shop")
+  buttonLabel  String    @default("")
+  buttonTarget String    @default("")
+  audience     Json
+  status       String    @default("sending")
+  total        Int       @default(0)
+  sent         Int       @default(0)
+  failed       Int       @default(0)
+  createdById  String?
+  createdBy    User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime  @default(now())
+  finishedAt   DateTime?
+
+  @@index([createdAt])
 }
 
 model Setting {

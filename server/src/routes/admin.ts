@@ -32,6 +32,8 @@ import {
 import { parse } from "../lib/validate.js";
 import { requireAdmin, requireStaff } from "../plugins/auth.js";
 import { startExportImport, startHistoryImport, visibleHistory } from "../services/channelImport.js";
+import { scatterCategories } from "../services/categories.js";
+import { broadcastBodySchema, countRecipients, publicBroadcast, sendTestBroadcast, startBroadcast } from "../services/broadcast.js";
 import { beginTelegramLogin, finishTelegramLogin } from "../services/telegramUser.js";
 import { productInclude, serializeProductAdmin, slugify, uniqueSlug } from "../services/catalog.js";
 import { notifyStatus } from "../services/notify.js";
@@ -349,6 +351,50 @@ export default async function adminRoutes(app: FastifyInstance) {
     await prisma.category.delete({ where: { id: categoryId } });
     await audit(actor.id, "category.delete", "category", categoryId, undefined, req.ip);
     return { ok: true };
+  });
+
+  app.post("/api/admin/categories/scatter", async (req) => {
+    const actor = requireAdmin(req);
+    const result = await scatterCategories();
+    await audit(actor.id, "category.scatter", "category", null, result, req.ip);
+    return result;
+  });
+
+  app.post("/api/admin/broadcasts/preview", async (req) => {
+    requireAdmin(req);
+    const body = parse(broadcastBodySchema.pick({ audience: true }), req.body);
+    return { recipients: await countRecipients(body.audience) };
+  });
+
+  app.post("/api/admin/broadcasts/photo", async (req) => {
+    requireAdmin(req);
+    const file = await req.file({ limits: { fileSize: config.productImageMaxBytes, files: 1 } });
+    if (!file) throw badRequest("Прикрепите изображение");
+    const buf = await file.toBuffer().catch(() => {
+      throw badRequest("Файл слишком большой");
+    });
+    return { fileName: await saveBotImage(buf) };
+  });
+
+  app.post("/api/admin/broadcasts/test", async (req) => {
+    const actor = requireAdmin(req);
+    const body = parse(broadcastBodySchema, req.body);
+    await sendTestBroadcast(actor.telegramId, body);
+    return { ok: true };
+  });
+
+  app.post("/api/admin/broadcasts", async (req) => {
+    const actor = requireAdmin(req);
+    const body = parse(broadcastBodySchema, req.body);
+    const row = await startBroadcast(actor.id, body);
+    await audit(actor.id, "broadcast.send", "broadcast", row.id, { total: row.total, segment: body.audience.segment }, req.ip);
+    return { broadcast: publicBroadcast(row) };
+  });
+
+  app.get("/api/admin/broadcasts", async (req) => {
+    requireAdmin(req);
+    const rows = await prisma.broadcast.findMany({ orderBy: { createdAt: "desc" }, take: 20 });
+    return { broadcasts: rows.map(publicBroadcast) };
   });
 
   app.get("/api/admin/products", async (req) => {

@@ -97,6 +97,23 @@ export function setupBot() {
 
   bot.command("start", async (ctx) => {
     if (ctx.chat.type !== "private" || !ctx.from) return;
+    await prisma.user
+      .upsert({
+        where: { telegramId: BigInt(ctx.from.id) },
+        update: {
+          marketingOptOut: false,
+          telegramUsername: ctx.from.username ?? null,
+          firstName: ctx.from.first_name ?? null,
+          lastName: ctx.from.last_name ?? null,
+        },
+        create: {
+          telegramId: BigInt(ctx.from.id),
+          telegramUsername: ctx.from.username ?? null,
+          firstName: ctx.from.first_name ?? null,
+          lastName: ctx.from.last_name ?? null,
+        },
+      })
+      .catch(() => undefined);
     const payload = typeof ctx.match === "string" ? ctx.match.trim() : "";
     if (payload.startsWith("login_")) {
       await askLoginConfirmation(ctx.reply.bind(ctx), payload.slice(6));
@@ -162,6 +179,17 @@ export function setupBot() {
     const kb = new InlineKeyboard();
     orders.forEach((o) => kb.webApp(`№${o.number} · ${STATUS_TEXT[o.status]}`, `${config.PUBLIC_URL}/orders/${o.number}`).row());
     await ctx.reply("Ваши последние заказы:", { reply_markup: kb });
+  });
+
+  bot.command("stop", async (ctx) => {
+    if (ctx.chat.type !== "private" || !ctx.from) return;
+    await prisma.user.updateMany({ where: { telegramId: BigInt(ctx.from.id) }, data: { marketingOptOut: true } });
+    await ctx.reply("Рассылки отключены. Заказы и магазин остаются. Чтобы снова получать новости, отправьте /start.");
+  });
+
+  bot.callbackQuery("bc:off", async (ctx) => {
+    await prisma.user.updateMany({ where: { telegramId: BigInt(ctx.from.id) }, data: { marketingOptOut: true } });
+    await ctx.answerCallbackQuery({ text: "Рассылки отключены" });
   });
 
   bot.command("help", async (ctx) => {
@@ -233,6 +261,7 @@ export async function startBot() {
     bot.api.setMyCommands([
       { command: "start", description: "Открыть магазин" },
       { command: "orders", description: "Мои заказы" },
+      { command: "stop", description: "Отключить рассылки" },
       { command: "help", description: "Помощь" },
     ]),
     menuButton ? bot.api.setChatMenuButton({ menu_button: menuButton }) : Promise.resolve(),

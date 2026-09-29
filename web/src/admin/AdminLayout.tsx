@@ -12,6 +12,7 @@ export default function AdminLayout() {
     { to: "/admin/orders", label: "Заказы", icon: "list" },
     { to: "/admin/products", label: "Товары", icon: "tag" },
     { to: "/admin/categories", label: "Категории", icon: "folder" },
+    { to: "/admin/broadcast", label: "Рассылка", icon: "send", admin: true },
     { to: "/admin/settings", label: "Настройки", icon: "gear" },
     { to: "/admin/users", label: "Пользователи", icon: "users" },
     { to: "/admin/audit", label: "Журнал действий", icon: "doc", admin: true },

@@ -12,6 +12,7 @@ import { publish } from "../lib/live.js";
 import { parsePost, type ParsedPost } from "../lib/postParser.js";
 import { getImportSettings, type ImportSettings } from "../lib/settings.js";
 import { slugify, uniqueSlug } from "./catalog.js";
+import { detectCategory, ensureCategory } from "./categories.js";
 import { rub, staffChats } from "./notify.js";
 
 export interface ImportPart {
@@ -82,15 +83,13 @@ async function downloadPhoto(fileId: string, buffers?: Map<string, Buffer>) {
 }
 
 async function guessCategory(post: ParsedPost, settings: ImportSettings) {
-  const categories = await prisma.category.findMany({ select: { id: true, name: true, slug: true } });
-  const haystack = `${post.title} ${post.tags.join(" ")}`.toLowerCase();
-  for (const c of categories) {
-    const name = c.name.toLowerCase().trim();
-    const stem = name.length > 5 ? name.slice(0, -2) : name.length > 3 ? name.slice(0, -1) : name;
-    if (stem.length >= 3 && haystack.includes(stem)) return c.id;
-    if (post.tags.includes(c.slug.toLowerCase())) return c.id;
+  if (settings.categoryId) {
+    const fixed = await prisma.category.findUnique({ where: { id: settings.categoryId } });
+    if (fixed) return fixed.id;
   }
-  return categories.some((c) => c.id === settings.categoryId) ? settings.categoryId : null;
+  const hit = detectCategory(`${post.title}\n${post.description}\n${post.tags.join(" ")}`);
+  if (!hit) return null;
+  return (await ensureCategory(hit)).id;
 }
 
 async function syncVariants(productId: string, post: ParsedPost, stock: number, isNew: boolean) {
